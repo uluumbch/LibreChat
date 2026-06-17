@@ -30,21 +30,57 @@ at the **session** layer:
 A "user profile" here is a DB-stored **preferences** record (model, persona, tool visibility, memory
 toggle) — not a per-user Hermes OS profile.
 
-## Quick start (local dev)
+## Run with Docker (recommended)
+
+Everything runs in containers — Postgres, the BFF (auto-applies Prisma migrations + hot reloads),
+the Vite client (hot reloads), and a bundled **mock Hermes gateway** so you can try the full UI
+without a real Hermes:
 
 ```bash
 cd hermes
-cp .env.example .env            # edit DATABASE_URL, JWT secrets, HERMES_GATEWAYS
+docker compose up --build
+```
 
-# 1. Postgres + a Hermes gateway
-docker compose up -d postgres   # see docker-compose.yml; bring your own Hermes gateway
+Open **http://localhost:5273**, register an account, and start chatting (the mock streams a canned
+tool-using response). The BFF is on `:8090` (`/health`), Postgres on `:5432`. Editing source on the
+host hot-reloads inside the containers.
 
-# 2. Install + generate Prisma client + migrate
+### Point at a real Hermes gateway
+
+Create `hermes/docker-compose.override.yml`:
+
+```yaml
+services:
+  server:
+    environment:
+      HERMES_GATEWAYS: '[{"id":"default","model":"<model>","baseURL":"http://host.docker.internal:8642","apiKey":"<API_SERVER_KEY>"}]'
+      HERMES_DEFAULT_MODEL: <model>
+  mock-hermes:
+    profiles: ['disabled'] # don't start the mock
+```
+
+`host.docker.internal` reaches a gateway running on your host; or use a compose service name.
+
+### VS Code Dev Containers
+
+Open the `hermes/` folder and **Reopen in Container** — it uses the same compose stack and drops you
+into the `server` container with the toolchain (`.devcontainer/devcontainer.json`).
+
+### Production-style images
+
+```bash
+docker compose -f docker-compose.prod.yml up --build   # client (nginx) on http://localhost:8080
+```
+
+### Without Docker
+
+Requires Node 22 and a local Postgres:
+
+```bash
+cd hermes
+cp .env.example server/.env     # edit DATABASE_URL, JWT secrets, HERMES_GATEWAYS
 npm install
-npm run db:generate
 npm run db:migrate
-
-# 3. Run
 npm run dev:server              # BFF on :8090
 npm run dev:client              # client on :5273
 ```

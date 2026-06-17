@@ -1,0 +1,66 @@
+# Production-style stack (built images, no bind mounts):
+#   docker compose -f docker-compose.prod.yml up --build
+# The client is served by nginx on http://localhost:8080 and proxies /api to the server.
+# Override the JWT secrets and HERMES_GATEWAYS for any real deployment.
+
+name: hermes-chat-prod
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hermes
+      POSTGRES_PASSWORD: hermes
+      POSTGRES_DB: hermes_chat
+    volumes:
+      - hermes-pgdata-prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U hermes -d hermes_chat']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Demo mock gateway — remove and point HERMES_GATEWAYS at a real Hermes gateway in production.
+  mock-hermes:
+    image: node:22-bookworm-slim
+    working_dir: /app
+    command: node server/scripts/mock-hermes.mjs
+    environment:
+      MOCK_PORT: '8642'
+      MOCK_API_KEY: mock-key
+    volumes:
+      - ./:/app
+    restart: unless-stopped
+
+  server:
+    image: hermes-chat-server:local
+    build:
+      context: .
+      target: server
+    environment:
+      PORT: '8090'
+      CORS_ORIGIN: http://localhost:8080
+      DATABASE_URL: postgresql://hermes:hermes@postgres:5432/hermes_chat?schema=public
+      JWT_SECRET: change-me-in-production
+      JWT_REFRESH_SECRET: change-me-too-in-production
+      HERMES_GATEWAYS: '[{"id":"default","model":"hermes-agent","baseURL":"http://mock-hermes:8642","apiKey":"mock-key"}]'
+      HERMES_DEFAULT_MODEL: hermes-agent
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  client:
+    image: hermes-chat-client:local
+    build:
+      context: .
+      target: client
+    ports:
+      - '8080:80'
+    depends_on:
+      - server
+    restart: unless-stopped
+
+volumes:
+  hermes-pgdata-prod:

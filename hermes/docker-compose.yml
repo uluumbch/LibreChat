@@ -1,15 +1,16 @@
-# Local dev infrastructure for Hermes-Chat.
-#   docker compose up -d postgres
+# Full dev stack for Hermes-Chat — run everything in Docker (hot reload):
+#   docker compose up --build
+# Then open http://localhost:5273. The BFF auto-applies Prisma migrations on start.
 #
-# A Hermes gateway is expected to run separately (one profile = one gateway). An example service is
-# included but commented out — wire it to your own Hermes image/build and provider key, then point
-# HERMES_GATEWAYS at it. Hermes' terminal/file tools run inside this container, so keep it locked
-# down before exposing the app publicly (see the plan's Security section).
+# To use a REAL Hermes gateway instead of the bundled mock, drop a
+# `docker-compose.override.yml` next to this file overriding the `server` service's
+# HERMES_GATEWAYS (and remove/ignore the `mock-hermes` service). See README.
+
+name: hermes-chat
 
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: hermes-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: hermes
@@ -25,18 +26,64 @@ services:
       timeout: 5s
       retries: 10
 
-  # hermes-gateway:
-  #   image: your-registry/hermes-agent:0.16
-  #   container_name: hermes-gateway
-  #   restart: unless-stopped
-  #   environment:
-  #     API_SERVER_ENABLED: 'true'
-  #     API_SERVER_HOST: 0.0.0.0
-  #     API_SERVER_PORT: '8642'
-  #     API_SERVER_KEY: change-me-local-dev
-  #     # The app-owned provider key + model are configured in the gateway's profile config.
-  #   ports:
-  #     - '8642:8642'
+  # Bundled mock Hermes gateway (zero dependencies — uses only Node builtins).
+  # Replace by pointing the server's HERMES_GATEWAYS at a real gateway.
+  mock-hermes:
+    image: node:22-bookworm-slim
+    working_dir: /app
+    command: node server/scripts/mock-hermes.mjs
+    environment:
+      MOCK_PORT: '8642'
+      MOCK_API_KEY: mock-key
+    volumes:
+      - ./:/app
+    restart: unless-stopped
+
+  server:
+    image: hermes-chat-dev:local
+    build:
+      context: .
+      target: dev
+    command: sh -lc "npm run db:generate -w @hermes/server && npm run db:deploy -w @hermes/server && npm run dev -w @hermes/server"
+    environment:
+      PORT: '8090'
+      CORS_ORIGIN: http://localhost:5273
+      DATABASE_URL: postgresql://hermes:hermes@postgres:5432/hermes_chat?schema=public
+      JWT_SECRET: dev-access-secret-change-me
+      JWT_REFRESH_SECRET: dev-refresh-secret-change-me
+      HERMES_GATEWAYS: '[{"id":"default","model":"hermes-agent","baseURL":"http://mock-hermes:8642","apiKey":"mock-key"}]'
+      HERMES_DEFAULT_MODEL: hermes-agent
+      # Reliable file watching on bind mounts (macOS/Windows Docker).
+      CHOKIDAR_USEPOLLING: 'true'
+    ports:
+      - '8090:8090'
+    volumes:
+      - ./:/app
+      - /app/node_modules
+      - /app/server/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  client:
+    image: hermes-chat-dev:local
+    build:
+      context: .
+      target: dev
+    command: npm run dev -w @hermes/client
+    environment:
+      BFF_PROXY_TARGET: http://server:8090
+      VITE_USE_POLLING: 'true'
+    ports:
+      - '5273:5273'
+    volumes:
+      - ./:/app
+      - /app/node_modules
+      - /app/client/node_modules
+    depends_on:
+      - server
+    restart: unless-stopped
 
 volumes:
   hermes-pgdata:
