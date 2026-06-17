@@ -1,0 +1,86 @@
+// Hermes-Chat data model (PostgreSQL). The provider key is app-level and is NOT stored here;
+// `model`, `instructions`, `memoryEnabled`, `enabledToolsets` are the per-user "profile" preferences.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String  @id @default(uuid()) @db.Uuid
+  email         String  @unique
+  passwordHash  String? @map("password_hash")
+  name          String?
+  role          String  @default("USER")
+  emailVerified Boolean @default(false) @map("email_verified")
+
+  // hermes_profile (preferences only)
+  model           String?
+  instructions    String?
+  memoryEnabled   Boolean  @default(true) @map("memory_enabled")
+  enabledToolsets String[] @default([]) @map("enabled_toolsets")
+
+  refreshTokens RefreshToken[]
+  conversations Conversation[]
+  messages      Message[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique @map("token_hash")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model Conversation {
+  id              String  @id @default(uuid()) @db.Uuid
+  title           String  @default("New Chat")
+  userId          String  @map("user_id") @db.Uuid
+  user            User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  hermesSessionId String? @map("hermes_session_id")
+  hermesGatewayId String? @map("hermes_gateway_id")
+  model           String?
+
+  messages Message[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId, updatedAt(sort: Desc), id])
+  @@map("conversations")
+}
+
+model Message {
+  id             String  @id @default(uuid()) @db.Uuid
+  conversationId String  @map("conversation_id") @db.Uuid
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId         String  @map("user_id") @db.Uuid
+  user           User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  role            String
+  text            String  @default("")
+  // MessageContentPart[] (discriminated union) stored as jsonb
+  content         Json
+  parentMessageId String? @map("parent_message_id")
+  finishReason    String? @map("finish_reason")
+  error           Boolean @default(false)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([conversationId, createdAt])
+  @@map("messages")
+}

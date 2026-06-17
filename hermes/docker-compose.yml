@@ -1,0 +1,42 @@
+# Local dev infrastructure for Hermes-Chat.
+#   docker compose up -d postgres
+#
+# A Hermes gateway is expected to run separately (one profile = one gateway). An example service is
+# included but commented out — wire it to your own Hermes image/build and provider key, then point
+# HERMES_GATEWAYS at it. Hermes' terminal/file tools run inside this container, so keep it locked
+# down before exposing the app publicly (see the plan's Security section).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: hermes-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hermes
+      POSTGRES_PASSWORD: hermes
+      POSTGRES_DB: hermes_chat
+    ports:
+      - '5432:5432'
+    volumes:
+      - hermes-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U hermes -d hermes_chat']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # hermes-gateway:
+  #   image: your-registry/hermes-agent:0.16
+  #   container_name: hermes-gateway
+  #   restart: unless-stopped
+  #   environment:
+  #     API_SERVER_ENABLED: 'true'
+  #     API_SERVER_HOST: 0.0.0.0
+  #     API_SERVER_PORT: '8642'
+  #     API_SERVER_KEY: change-me-local-dev
+  #     # The app-owned provider key + model are configured in the gateway's profile config.
+  #   ports:
+  #     - '8642:8642'
+
+volumes:
+  hermes-pgdata:
