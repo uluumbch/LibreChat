@@ -1,0 +1,138 @@
+import { useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import clsx from 'clsx';
+import { useAuth } from '~/auth/AuthContext';
+import {
+  useConversations,
+  useDeleteConversation,
+  useRenameConversation,
+} from '~/data/queries';
+import { Button, Spinner } from '~/components/ui';
+
+export function Sidebar({ onOpenSettings }: { onOpenSettings: () => void }): JSX.Element {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const { conversationId } = useParams();
+  const conversationsQuery = useConversations();
+  const deleteConversation = useDeleteConversation();
+  const renameConversation = useRenameConversation();
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
+
+  const conversations = conversationsQuery.data?.pages.flatMap((page) => page.items) ?? [];
+
+  const startRename = (id: string, title: string) => {
+    setEditingId(id);
+    setDraft(title);
+  };
+
+  const commitRename = async (id: string) => {
+    const title = draft.trim();
+    setEditingId(null);
+    if (title) {
+      await renameConversation.mutateAsync({ id, title });
+    }
+  };
+
+  const remove = async (id: string) => {
+    await deleteConversation.mutateAsync(id);
+    if (conversationId === id) {
+      navigate('/');
+    }
+  };
+
+  return (
+    <aside className="flex h-full w-72 flex-col border-r border-white/10 bg-surface-dark-muted">
+      <div className="p-3">
+        <Button className="w-full" onClick={() => navigate('/')}>
+          + New chat
+        </Button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-2">
+        {conversationsQuery.isLoading && (
+          <div className="p-3 text-zinc-500">
+            <Spinner size={16} />
+          </div>
+        )}
+        {conversations.map((conversation) => {
+          const active = conversation.id === conversationId;
+          if (editingId === conversation.id) {
+            return (
+              <input
+                key={conversation.id}
+                autoFocus
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                onBlur={() => void commitRename(conversation.id)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    void commitRename(conversation.id);
+                  }
+                  if (event.key === 'Escape') {
+                    setEditingId(null);
+                  }
+                }}
+                className="my-1 w-full rounded bg-black/30 px-2 py-1 text-sm text-zinc-100 outline-none ring-1 ring-blue-500"
+              />
+            );
+          }
+          return (
+            <div
+              key={conversation.id}
+              className={clsx(
+                'group flex items-center gap-1 rounded-lg px-2',
+                active ? 'bg-white/10' : 'hover:bg-white/5',
+              )}
+            >
+              <Link
+                to={`/c/${conversation.id}`}
+                className="flex-1 truncate py-2 text-sm text-zinc-200"
+                title={conversation.title}
+              >
+                {conversation.title}
+              </Link>
+              <button
+                type="button"
+                onClick={() => startRename(conversation.id, conversation.title)}
+                className="px-1 text-xs text-zinc-400 opacity-0 hover:text-zinc-100 group-hover:opacity-100"
+                aria-label="Rename conversation"
+              >
+                Rename
+              </button>
+              <button
+                type="button"
+                onClick={() => void remove(conversation.id)}
+                className="px-1 text-xs text-zinc-400 opacity-0 hover:text-red-400 group-hover:opacity-100"
+                aria-label="Delete conversation"
+              >
+                Delete
+              </button>
+            </div>
+          );
+        })}
+        {conversationsQuery.hasNextPage && (
+          <button
+            type="button"
+            onClick={() => void conversationsQuery.fetchNextPage()}
+            className="my-2 w-full rounded-lg py-2 text-xs text-zinc-400 hover:bg-white/5"
+          >
+            Load more
+          </button>
+        )}
+      </div>
+
+      <div className="border-t border-white/10 p-3">
+        <div className="mb-2 truncate text-xs text-zinc-400">{user?.email}</div>
+        <div className="flex gap-2">
+          <Button variant="ghost" className="flex-1 ring-1 ring-white/10" onClick={onOpenSettings}>
+            Settings
+          </Button>
+          <Button variant="ghost" className="ring-1 ring-white/10" onClick={() => void logout()}>
+            Logout
+          </Button>
+        </div>
+      </div>
+    </aside>
+  );
+}
