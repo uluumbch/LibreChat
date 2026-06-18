@@ -4,3 +4,5 @@
 **/*.log
 .git
 .devcontainer
+# The Hermes agent is built by its own service (./vendor/hermes-agent), not the BFF/client image.
+vendor

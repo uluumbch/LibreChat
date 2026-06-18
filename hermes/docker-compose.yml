@@ -1,10 +1,13 @@
 # Full dev stack for Hermes-Chat — run everything in Docker (hot reload):
-#   docker compose up --build
-# Then open http://localhost:5273. The BFF auto-applies Prisma migrations on start.
+#   cd hermes
+#   git submodule update --init            # fetch the Hermes agent (vendor/hermes-agent)
+#   cp .env.example .env                   # set OPENROUTER_API_KEY + HERMES_API_KEY
+#   docker compose up --build              # first build of the Hermes image is large
+# Then open http://localhost:5273.
 #
-# To use a REAL Hermes gateway instead of the bundled mock, drop a
-# `docker-compose.override.yml` next to this file overriding the `server` service's
-# HERMES_GATEWAYS (and remove/ignore the `mock-hermes` service). See README.
+# Services: postgres, the real Hermes agent (vendor/hermes-agent, exposing its
+# OpenAI-compatible api_server on :8642), the BFF (auto-applies Prisma migrations
+# + hot reload), and the Vite client (hot reload).
 
 name: hermes-chat
 
@@ -26,17 +29,40 @@ services:
       timeout: 5s
       retries: 10
 
-  # Bundled mock Hermes gateway (zero dependencies — uses only Node builtins).
-  # Replace by pointing the server's HERMES_GATEWAYS at a real gateway.
-  mock-hermes:
-    image: node:22-bookworm-slim
-    working_dir: /app
-    command: node server/scripts/mock-hermes.mjs
+  # Real Hermes agent (Nous Research), built from the fork submodule at
+  # vendor/hermes-agent. Its `api_server` platform (enabled by API_SERVER_KEY)
+  # serves the OpenAI-compatible + Sessions API the BFF speaks natively on :8642.
+  # The agent calls OpenRouter for the LLM — no GPU. Tools execute INSIDE this
+  # container (the isolation boundary). Requires OPENROUTER_API_KEY + HERMES_API_KEY.
+  hermes-agent:
+    build:
+      context: ./vendor/hermes-agent
+    # main-wrapper drops to the hermes user and activates the venv for us, so we
+    # can set the model (optional) then run the gateway in the foreground.
+    command:
+      - sh
+      - -lc
+      - 'if [ -n "$$HERMES_MODEL" ]; then hermes config set model.default "$$HERMES_MODEL" >/dev/null 2>&1 || true; fi; exec hermes gateway run'
     environment:
-      MOCK_PORT: '8642'
-      MOCK_API_KEY: mock-key
+      API_SERVER_ENABLED: 'true'
+      API_SERVER_HOST: '0.0.0.0'
+      API_SERVER_PORT: '8642'
+      API_SERVER_KEY: ${HERMES_API_KEY:?set HERMES_API_KEY in hermes/.env}
+      API_SERVER_MODEL_NAME: hermes-agent
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?set OPENROUTER_API_KEY in hermes/.env}
+      # Optional: an OpenRouter model id (e.g. nousresearch/hermes-4-405b).
+      # Empty → use the seeded default (anthropic/claude-opus-4.6 via OpenRouter).
+      HERMES_MODEL: ${HERMES_MODEL:-}
     volumes:
-      - ./:/app
+      - hermes-agent-data:/opt/data
+    ports:
+      - '8642:8642'
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -fsS http://localhost:8642/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 120s
     restart: unless-stopped
 
   server:
@@ -51,7 +77,7 @@ services:
       DATABASE_URL: postgresql://hermes:hermes@postgres:5432/hermes_chat?schema=public
       JWT_SECRET: dev-access-secret-change-me
       JWT_REFRESH_SECRET: dev-refresh-secret-change-me
-      HERMES_GATEWAYS: '[{"id":"default","model":"hermes-agent","baseURL":"http://mock-hermes:8642","apiKey":"mock-key"}]'
+      HERMES_GATEWAYS: '[{"id":"default","model":"hermes-agent","baseURL":"http://hermes-agent:8642","apiKey":"${HERMES_API_KEY}"}]'
       HERMES_DEFAULT_MODEL: hermes-agent
       # Reliable file watching on bind mounts (macOS/Windows Docker).
       CHOKIDAR_USEPOLLING: 'true'
@@ -61,8 +87,11 @@ services:
       - ./:/app
       - /app/node_modules
       - /app/server/node_modules
+      - /app/vendor
     depends_on:
       postgres:
+        condition: service_healthy
+      hermes-agent:
         condition: service_healthy
     restart: unless-stopped
 
@@ -81,9 +110,11 @@ services:
       - ./:/app
       - /app/node_modules
       - /app/client/node_modules
+      - /app/vendor
     depends_on:
       - server
     restart: unless-stopped
 
 volumes:
   hermes-pgdata:
+  hermes-agent-data:

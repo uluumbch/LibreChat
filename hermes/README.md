@@ -32,39 +32,46 @@ toggle) — not a per-user Hermes OS profile.
 
 ## Run with Docker (recommended)
 
-Everything runs in containers — Postgres, the BFF (auto-applies Prisma migrations + hot reloads),
-the Vite client (hot reloads), and a bundled **mock Hermes gateway** so you can try the full UI
-without a real Hermes:
+The stack runs the **real Hermes agent** (built from the `vendor/hermes-agent` submodule — a fork of
+`NousResearch/hermes-agent`) alongside Postgres, the BFF (auto-applies Prisma migrations + hot
+reloads), and the Vite client (hot reloads). Hermes exposes its OpenAI-compatible **api_server** on
+`:8642`, which the BFF speaks natively. The agent calls **OpenRouter** for the LLM (no GPU needed).
+
+**Prerequisites**
+
+1. Fetch the agent submodule: `git submodule update --init` (from the repo root or `hermes/`).
+2. Provide secrets — copy the env template and fill it in:
+
+   ```bash
+   cd hermes
+   cp .env.example .env
+   # set OPENROUTER_API_KEY (https://openrouter.ai/keys) and HERMES_API_KEY (any strong string)
+   ```
+
+**Run**
 
 ```bash
-cd hermes
-docker compose up --build
+docker compose up --build       # first build of the Hermes image is large (Python + Node + browser)
 ```
 
-Open **http://localhost:5273**, register an account, and start chatting (the mock streams a canned
-tool-using response). The BFF is on `:8090` (`/health`), Postgres on `:5432`. Editing source on the
-host hot-reloads inside the containers.
+Open **http://localhost:5273**, register an account, and chat — the agent streams real tokens and
+live tool steps (terminal, web search, files…). The BFF is on `:8090` (`/health`), the Hermes
+api_server on `:8642` (`/health`, `/v1/models`), Postgres on `:5432`. Editing source hot-reloads the
+BFF/client inside their containers.
 
-### Point at a real Hermes gateway
+### Choosing the model
 
-Create `hermes/docker-compose.override.yml`:
-
-```yaml
-services:
-  server:
-    environment:
-      HERMES_GATEWAYS: '[{"id":"default","model":"<model>","baseURL":"http://host.docker.internal:8642","apiKey":"<API_SERVER_KEY>"}]'
-      HERMES_DEFAULT_MODEL: <model>
-  mock-hermes:
-    profiles: ['disabled'] # don't start the mock
-```
-
-`host.docker.internal` reaches a gateway running on your host; or use a compose service name.
+The agent's model is an **OpenRouter** model id. Set `HERMES_MODEL` in `hermes/.env` (e.g.
+`nousresearch/hermes-4-405b`); leave it empty to use the default `anthropic/claude-opus-4.6`. The
+name the BFF/UI shows (`hermes-agent`) is fixed via `API_SERVER_MODEL_NAME`, independent of the
+underlying model. You can also change it at runtime:
+`docker compose exec hermes-agent hermes config set model.default <id>` (then restart the service).
 
 ### VS Code Dev Containers
 
 Open the `hermes/` folder and **Reopen in Container** — it uses the same compose stack and drops you
-into the `server` container with the toolchain (`.devcontainer/devcontainer.json`).
+into the `server` container (`.devcontainer/devcontainer.json`). Note: the first open builds the
+Hermes image, so it inherits the heavy first-build cost above.
 
 ### Production-style images
 
@@ -74,17 +81,20 @@ docker compose -f docker-compose.prod.yml up --build   # client (nginx) on http:
 
 ### Without Docker
 
-Requires Node 22 and a local Postgres:
+Requires Node 22, a local Postgres, and a running Hermes api_server (`hermes gateway` with
+`API_SERVER_ENABLED=true` + `API_SERVER_KEY`) reachable at the `baseURL` below:
 
 ```bash
 cd hermes
-cp .env.example server/.env     # edit DATABASE_URL, JWT secrets, HERMES_GATEWAYS
+cp server/.env.example server/.env   # edit DATABASE_URL, JWT secrets, HERMES_GATEWAYS (apiKey = API_SERVER_KEY)
 npm install
 npm run db:migrate
-npm run dev:server              # BFF on :8090
-npm run dev:client              # client on :5273
+npm run dev:server                   # BFF on :8090
+npm run dev:client                   # client on :5273
 ```
 
-> **Security note:** Hermes' terminal/file tools execute on the gateway host, which is shared across
-> users in the pool. Run gateways in locked-down containers and gate risky toolsets before exposing
-> the app publicly. See the plan's Security section.
+> **Security note:** the Hermes agent executes its tools (terminal, file ops, …) **inside the
+> `hermes-agent` container**, using the app-owned OpenRouter key. That container is the isolation
+> boundary — network-restrict it and gate risky toolsets before exposing the app publicly. The BFF
+> isolates *users* at the Hermes **session** layer (`X-Hermes-Session-Key: user:{id}`), not by
+> running a process per user.

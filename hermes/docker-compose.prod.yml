@@ -1,7 +1,7 @@
 # Production-style stack (built images, no bind mounts):
 #   docker compose -f docker-compose.prod.yml up --build
 # The client is served by nginx on http://localhost:8080 and proxies /api to the server.
-# Override the JWT secrets and HERMES_GATEWAYS for any real deployment.
+# Set OPENROUTER_API_KEY + HERMES_API_KEY and override the JWT secrets for any real deployment.
 
 name: hermes-chat-prod
 
@@ -21,16 +21,32 @@ services:
       timeout: 5s
       retries: 10
 
-  # Demo mock gateway — remove and point HERMES_GATEWAYS at a real Hermes gateway in production.
-  mock-hermes:
-    image: node:22-bookworm-slim
-    working_dir: /app
-    command: node server/scripts/mock-hermes.mjs
+  # Real Hermes agent (built from the fork submodule). See docker-compose.yml for notes.
+  # SECURITY: the agent executes tools inside this container — isolate/network-restrict
+  # it appropriately before any real deployment.
+  hermes-agent:
+    build:
+      context: ./vendor/hermes-agent
+    command:
+      - sh
+      - -lc
+      - 'if [ -n "$$HERMES_MODEL" ]; then hermes config set model.default "$$HERMES_MODEL" >/dev/null 2>&1 || true; fi; exec hermes gateway run'
     environment:
-      MOCK_PORT: '8642'
-      MOCK_API_KEY: mock-key
+      API_SERVER_ENABLED: 'true'
+      API_SERVER_HOST: '0.0.0.0'
+      API_SERVER_PORT: '8642'
+      API_SERVER_KEY: ${HERMES_API_KEY:?set HERMES_API_KEY in hermes/.env}
+      API_SERVER_MODEL_NAME: hermes-agent
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?set OPENROUTER_API_KEY in hermes/.env}
+      HERMES_MODEL: ${HERMES_MODEL:-}
     volumes:
-      - ./:/app
+      - hermes-agent-data-prod:/opt/data
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -fsS http://localhost:8642/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 120s
     restart: unless-stopped
 
   server:
@@ -44,10 +60,12 @@ services:
       DATABASE_URL: postgresql://hermes:hermes@postgres:5432/hermes_chat?schema=public
       JWT_SECRET: change-me-in-production
       JWT_REFRESH_SECRET: change-me-too-in-production
-      HERMES_GATEWAYS: '[{"id":"default","model":"hermes-agent","baseURL":"http://mock-hermes:8642","apiKey":"mock-key"}]'
+      HERMES_GATEWAYS: '[{"id":"default","model":"hermes-agent","baseURL":"http://hermes-agent:8642","apiKey":"${HERMES_API_KEY}"}]'
       HERMES_DEFAULT_MODEL: hermes-agent
     depends_on:
       postgres:
+        condition: service_healthy
+      hermes-agent:
         condition: service_healthy
     restart: unless-stopped
 
@@ -64,3 +82,4 @@ services:
 
 volumes:
   hermes-pgdata-prod:
+  hermes-agent-data-prod:
