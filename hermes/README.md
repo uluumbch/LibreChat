@@ -35,7 +35,8 @@ toggle) — not a per-user Hermes OS profile.
 The stack runs the **real Hermes agent** (built from the `vendor/hermes-agent` submodule — a fork of
 `NousResearch/hermes-agent`) alongside Postgres, the BFF (auto-applies Prisma migrations + hot
 reloads), and the Vite client (hot reloads). Hermes exposes its OpenAI-compatible **api_server** on
-`:8642`, which the BFF speaks natively. The agent calls **OpenRouter** for the LLM (no GPU needed).
+`:8642`, which the BFF speaks natively. The agent calls an external LLM provider — **OpenRouter** or
+**DeepSeek** — for the LLM (no GPU needed).
 
 **Prerequisites**
 
@@ -45,7 +46,9 @@ reloads), and the Vite client (hot reloads). Hermes exposes its OpenAI-compatibl
    ```bash
    cd hermes
    cp .env.example .env
-   # set OPENROUTER_API_KEY (https://openrouter.ai/keys) and HERMES_API_KEY (any strong string)
+   # set HERMES_API_KEY (any strong string) and AT LEAST ONE provider key:
+   #   OPENROUTER_API_KEY (https://openrouter.ai/keys) and/or
+   #   DEEPSEEK_API_KEY   (https://platform.deepseek.com/api_keys)
    ```
 
 **Run**
@@ -59,13 +62,22 @@ live tool steps (terminal, web search, files…). The BFF is on `:8090` (`/healt
 api_server on `:8642` (`/health`, `/v1/models`), Postgres on `:5432`. Editing source hot-reloads the
 BFF/client inside their containers.
 
-### Choosing the model
+### Choosing the model / provider
 
-The agent's model is an **OpenRouter** model id. Set `HERMES_MODEL` in `hermes/.env` (e.g.
-`nousresearch/hermes-4-405b`); leave it empty to use the default `anthropic/claude-opus-4.6`. The
-name the BFF/UI shows (`hermes-agent`) is fixed via `API_SERVER_MODEL_NAME`, independent of the
+Set keys in `hermes/.env` and pick the model with `HERMES_PROVIDER` / `HERMES_MODEL` (leave them
+empty for the default `anthropic/claude-opus-4.6` via OpenRouter):
+
+- **OpenRouter** (default): set `OPENROUTER_API_KEY`, then any OpenRouter id, e.g.
+  `HERMES_MODEL=nousresearch/hermes-4-405b` — or DeepSeek *via* OpenRouter with
+  `HERMES_MODEL=deepseek/deepseek-chat`.
+- **DeepSeek (direct)**: set `DEEPSEEK_API_KEY`, then `HERMES_PROVIDER=deepseek` and
+  `HERMES_MODEL=deepseek-chat` (or `deepseek-reasoner`).
+
+The name the BFF/UI shows (`hermes-agent`) is fixed via `API_SERVER_MODEL_NAME`, independent of the
 underlying model. You can also change it at runtime:
 `docker compose exec hermes-agent hermes config set model.default <id>` (then restart the service).
+Hermes supports many other providers too (Gemini, Groq, Novita, Kimi, …) — add the matching
+`<PROVIDER>_API_KEY` to the `hermes-agent` service the same way.
 
 ### VS Code Dev Containers
 

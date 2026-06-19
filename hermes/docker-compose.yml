@@ -32,26 +32,32 @@ services:
   # Real Hermes agent (Nous Research), built from the fork submodule at
   # vendor/hermes-agent. Its `api_server` platform (enabled by API_SERVER_KEY)
   # serves the OpenAI-compatible + Sessions API the BFF speaks natively on :8642.
-  # The agent calls OpenRouter for the LLM — no GPU. Tools execute INSIDE this
-  # container (the isolation boundary). Requires OPENROUTER_API_KEY + HERMES_API_KEY.
+  # The agent calls an external LLM provider (OpenRouter or DeepSeek) — no GPU.
+  # Tools execute INSIDE this container (the isolation boundary). Set HERMES_API_KEY
+  # plus at least one provider key (OPENROUTER_API_KEY or DEEPSEEK_API_KEY) in
+  # hermes/.env, and pick the model via HERMES_PROVIDER / HERMES_MODEL.
   hermes-agent:
     build:
       context: ./vendor/hermes-agent
     # main-wrapper drops to the hermes user and activates the venv for us, so we
-    # can set the model (optional) then run the gateway in the foreground.
+    # seed the provider/model (both optional) then run the gateway in the foreground.
     command:
       - sh
       - -lc
-      - 'if [ -n "$$HERMES_MODEL" ]; then hermes config set model.default "$$HERMES_MODEL" >/dev/null 2>&1 || true; fi; exec hermes gateway run'
+      - 'if [ -z "$$OPENROUTER_API_KEY" ] && [ -z "$$DEEPSEEK_API_KEY" ]; then echo "[hermes-agent] set OPENROUTER_API_KEY or DEEPSEEK_API_KEY in hermes/.env" >&2; fi; if [ -n "$$HERMES_PROVIDER" ]; then hermes config set model.provider "$$HERMES_PROVIDER" >/dev/null 2>&1 || true; fi; if [ -n "$$HERMES_MODEL" ]; then hermes config set model.default "$$HERMES_MODEL" >/dev/null 2>&1 || true; fi; exec hermes gateway run'
     environment:
       API_SERVER_ENABLED: 'true'
       API_SERVER_HOST: '0.0.0.0'
       API_SERVER_PORT: '8642'
       API_SERVER_KEY: ${HERMES_API_KEY:?set HERMES_API_KEY in hermes/.env}
       API_SERVER_MODEL_NAME: hermes-agent
-      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?set OPENROUTER_API_KEY in hermes/.env}
-      # Optional: an OpenRouter model id (e.g. nousresearch/hermes-4-405b).
-      # Empty → use the seeded default (anthropic/claude-opus-4.6 via OpenRouter).
+      # Provider keys — set the one(s) matching your chosen model (at least one).
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      # Optional model selection (see hermes/.env.example for combos):
+      #   OpenRouter: HERMES_MODEL=anthropic/claude-opus-4.6  (or deepseek/deepseek-chat)
+      #   DeepSeek:   HERMES_PROVIDER=deepseek  HERMES_MODEL=deepseek-chat
+      HERMES_PROVIDER: ${HERMES_PROVIDER:-}
       HERMES_MODEL: ${HERMES_MODEL:-}
     volumes:
       - hermes-agent-data:/opt/data
