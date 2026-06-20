@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { SSE } from 'sse.js';
 import type {
+  ApprovalChoice,
+  ApprovalEvent,
   CreatedEvent,
   DeltaEvent,
   FinalEvent,
@@ -13,6 +15,7 @@ import type {
 } from '@hermes/shared';
 import { ChatStreamEventType, ContentPartType } from '@hermes/shared';
 import { useAuth } from '~/auth/AuthContext';
+import { apiRequest } from '~/api/client';
 import { useMessages } from '~/data/queries';
 import { queryKeys } from '~/data/keys';
 
@@ -40,13 +43,17 @@ export interface UseChatResult {
   isStreaming: boolean;
   error: string | null;
   isLoadingHistory: boolean;
-  send: (text: string) => void;
+  /** A pending tool-approval gate (agentic engine), or null. */
+  pendingApproval: ApprovalEvent | null;
+  send: (text: string, agentic?: boolean) => void;
+  respondApproval: (choice: ApprovalChoice) => void;
   stop: () => void;
 }
 
 /**
  * Owns the message list for the active conversation: seeds it from history, then drives a live turn
  * by opening an SSE to `/api/chat` and folding our normalized events into the assistant message.
+ * With `agentic`, the turn runs through the Runs engine and may pause on an approval gate.
  */
 export function useChat(conversationId: string | null): UseChatResult {
   const { token } = useAuth();
@@ -56,6 +63,7 @@ export function useChat(conversationId: string | null): UseChatResult {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingApproval, setPendingApproval] = useState<ApprovalEvent | null>(null);
 
   const sseRef = useRef<SSE | null>(null);
   const assistantIdRef = useRef<string | null>(null);
@@ -145,18 +153,20 @@ export function useChat(conversationId: string | null): UseChatResult {
   const finish = useCallback(() => {
     finishedRef.current = true;
     setIsStreaming(false);
+    setPendingApproval(null);
     assistantIdRef.current = null;
     sseRef.current = null;
   }, []);
 
   const send = useCallback(
-    (text: string) => {
+    (text: string, agentic = false) => {
       const trimmed = text.trim();
       if (!conversationId || isStreaming || trimmed.length === 0) {
         return;
       }
       setError(null);
       setIsStreaming(true);
+      setPendingApproval(null);
       finishedRef.current = false;
 
       const tempUserId = `temp-user-${Date.now()}`;
@@ -180,7 +190,7 @@ export function useChat(conversationId: string | null): UseChatResult {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token ?? ''}`,
         },
-        payload: JSON.stringify({ conversationId, text: trimmed }),
+        payload: JSON.stringify({ conversationId, text: trimmed, agentic }),
       });
       sseRef.current = sse;
 
@@ -208,6 +218,14 @@ export function useChat(conversationId: string | null): UseChatResult {
 
       sse.addEventListener(ChatStreamEventType.ToolStep, (event: MessageEvent) => {
         upsertToolStep(JSON.parse(event.data) as ToolStepEvent);
+      });
+
+      sse.addEventListener(ChatStreamEventType.Approval, (event: MessageEvent) => {
+        setPendingApproval(JSON.parse(event.data) as ApprovalEvent);
+      });
+
+      sse.addEventListener(ChatStreamEventType.ApprovalResolved, () => {
+        setPendingApproval(null);
       });
 
       sse.addEventListener(ChatStreamEventType.Title, (event: MessageEvent) => {
@@ -254,6 +272,22 @@ export function useChat(conversationId: string | null): UseChatResult {
     [conversationId, isStreaming, token, appendText, appendReasoning, upsertToolStep, finish, queryClient],
   );
 
+  const respondApproval = useCallback(
+    (choice: ApprovalChoice) => {
+      const runId = pendingApproval?.runId;
+      if (!runId) {
+        return;
+      }
+      setPendingApproval(null);
+      void apiRequest('POST', `/api/chat/runs/${encodeURIComponent(runId)}/approval`, { choice }).catch(
+        (err: unknown) => {
+          setError(err instanceof Error ? err.message : 'Approval failed');
+        },
+      );
+    },
+    [pendingApproval],
+  );
+
   const stop = useCallback(() => {
     sseRef.current?.close();
     finish();
@@ -264,7 +298,9 @@ export function useChat(conversationId: string | null): UseChatResult {
     isStreaming,
     error,
     isLoadingHistory: historyQuery.isLoading && conversationId !== null,
+    pendingApproval,
     send,
+    respondApproval,
     stop,
   };
 }

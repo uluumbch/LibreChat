@@ -3,10 +3,16 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Sidebar } from '~/components/Sidebar';
 import { Composer } from '~/components/Composer';
 import { MessageList } from '~/components/MessageList';
+import { ApprovalPrompt } from '~/components/ApprovalPrompt';
 import { SettingsModal } from '~/components/SettingsModal';
 import { Spinner } from '~/components/ui';
 import { useChat } from '~/chat/useChat';
 import { useCreateConversation } from '~/data/queries';
+
+interface InitialState {
+  initialMessage?: string;
+  agentic?: boolean;
+}
 
 function EmptyState(): JSX.Element {
   return (
@@ -29,24 +35,24 @@ export default function ChatPage(): JSX.Element {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const initialSentRef = useRef<string | null>(null);
 
-  const initialMessage = (location.state as { initialMessage?: string } | null)?.initialMessage;
+  const initial = location.state as InitialState | null;
 
   // First message of a freshly created conversation, handed over via navigation state.
   useEffect(() => {
-    if (convId && initialMessage && initialSentRef.current !== convId) {
+    if (convId && initial?.initialMessage && initialSentRef.current !== convId) {
       initialSentRef.current = convId;
-      chat.send(initialMessage);
+      chat.send(initial.initialMessage, initial.agentic ?? false);
       navigate(`/c/${convId}`, { replace: true });
     }
-  }, [convId, initialMessage, chat, navigate]);
+  }, [convId, initial, chat, navigate]);
 
-  const onSend = async (text: string) => {
+  const onSend = async (text: string, agentic: boolean) => {
     if (convId) {
-      chat.send(text);
+      chat.send(text, agentic);
       return;
     }
     const conversation = await createConversation.mutateAsync({});
-    navigate(`/c/${conversation.id}`, { state: { initialMessage: text } });
+    navigate(`/c/${conversation.id}`, { state: { initialMessage: text, agentic } satisfies InitialState });
   };
 
   return (
@@ -67,7 +73,16 @@ export default function ChatPage(): JSX.Element {
         {chat.error && (
           <div className="px-4 py-1 text-center text-xs text-red-400">{chat.error}</div>
         )}
-        <Composer onSend={(text) => void onSend(text)} onStop={chat.stop} isStreaming={chat.isStreaming} />
+        {chat.pendingApproval && (
+          <div className="px-4 pt-2">
+            <ApprovalPrompt approval={chat.pendingApproval} onRespond={chat.respondApproval} />
+          </div>
+        )}
+        <Composer
+          onSend={(text, agentic) => void onSend(text, agentic)}
+          onStop={chat.stop}
+          isStreaming={chat.isStreaming}
+        />
       </main>
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
     </div>

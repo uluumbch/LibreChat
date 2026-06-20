@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import type { KeyboardEvent } from 'react';
+import clsx from 'clsx';
 import { Button } from '~/components/ui';
+
+const AGENTIC_KEY = 'hermes:agentic';
 
 export function Composer({
   onSend,
@@ -8,19 +11,30 @@ export function Composer({
   isStreaming,
   disabled,
 }: {
-  onSend: (text: string) => void;
+  onSend: (text: string, agentic: boolean) => void;
   onStop: () => void;
   isStreaming: boolean;
   disabled?: boolean;
 }): JSX.Element {
   const [text, setText] = useState('');
+  const [agentic, setAgentic] = useState<boolean>(
+    () => typeof localStorage !== 'undefined' && localStorage.getItem(AGENTIC_KEY) === '1',
+  );
+
+  const toggleAgentic = () => {
+    setAgentic((prev) => {
+      const next = !prev;
+      localStorage.setItem(AGENTIC_KEY, next ? '1' : '0');
+      return next;
+    });
+  };
 
   const submit = () => {
     const trimmed = text.trim();
     if (!trimmed || isStreaming || disabled) {
       return;
     }
-    onSend(trimmed);
+    onSend(trimmed, agentic);
     setText('');
   };
 
@@ -33,6 +47,22 @@ export function Composer({
 
   return (
     <div className="border-t border-white/10 bg-surface-dark px-4 py-3">
+      <div className="mx-auto mb-2 flex max-w-3xl items-center">
+        <button
+          type="button"
+          onClick={toggleAgentic}
+          title="Agentic mode: the agent pauses for your approval before risky tools, and shows its reasoning."
+          aria-pressed={agentic}
+          className={clsx(
+            'rounded-full px-3 py-1 text-xs ring-1 transition',
+            agentic
+              ? 'bg-amber-600/80 text-white ring-amber-500'
+              : 'text-zinc-400 ring-white/15 hover:text-zinc-200',
+          )}
+        >
+          {agentic ? '🛡️ Agentic: on' : 'Agentic: off'}
+        </button>
+      </div>
       <div className="mx-auto flex max-w-3xl items-end gap-2">
         <textarea
           value={text}
