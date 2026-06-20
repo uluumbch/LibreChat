@@ -27,9 +27,10 @@ services:
   hermes-agent:
     build:
       context: ./vendor/hermes-agent
+    # Use `sh -c` (NOT `-lc`): a login shell would reset PATH and hide `hermes`.
     command:
       - sh
-      - -lc
+      - -c
       - 'if [ -z "$$OPENROUTER_API_KEY" ] && [ -z "$$DEEPSEEK_API_KEY" ]; then echo "[hermes-agent] set OPENROUTER_API_KEY or DEEPSEEK_API_KEY in hermes/.env" >&2; fi; if [ -n "$$HERMES_PROVIDER" ]; then hermes config set model.provider "$$HERMES_PROVIDER" >/dev/null 2>&1 || true; fi; if [ -n "$$HERMES_MODEL" ]; then hermes config set model.default "$$HERMES_MODEL" >/dev/null 2>&1 || true; fi; exec hermes gateway run'
     environment:
       API_SERVER_ENABLED: 'true'
