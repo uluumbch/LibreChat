@@ -155,6 +155,15 @@ export interface SendMessageRequest {
   conversationId: string;
   text: string;
   images?: ChatImageInput[];
+  /** Opt into the agentic Runs engine (approval gates + reasoning). Defaults to the Sessions engine. */
+  agentic?: boolean;
+}
+
+/** How the user resolves a pending tool-approval gate. */
+export type ApprovalChoice = 'once' | 'session' | 'always' | 'deny';
+
+export interface ApprovalRequestBody {
+  choice: ApprovalChoice;
 }
 
 /* ----------------------------- Settings DTOs ----------------------------- */

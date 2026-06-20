@@ -3,6 +3,8 @@ import type {
   HermesCreateSessionRequest,
   HermesHealthResponse,
   HermesModelsResponse,
+  HermesRunCreatedResponse,
+  HermesRunRequest,
   HermesSession,
   HermesSessionChatRequest,
   HermesSkillsResponse,
@@ -104,6 +106,39 @@ export class HermesClient {
       body: JSON.stringify(body),
       signal: opts.signal,
     });
+  }
+
+  /* ----- Runs API (agentic engine: approval gates + reasoning) ----- */
+
+  /** Start an agent run; returns the run id immediately (the run streams via runEvents). */
+  createRun(body: HermesRunRequest, opts: { sessionKey: string }): Promise<HermesRunCreatedResponse> {
+    return this.requestJson('/v1/runs', {
+      method: 'POST',
+      headers: { [HERMES_SESSION_KEY_HEADER]: opts.sessionKey },
+      body: JSON.stringify(body),
+    });
+  }
+
+  /** SSE stream of a run's structured lifecycle events (data-only frames). */
+  runEvents(runId: string, opts: { signal?: AbortSignal } = {}): Promise<Response> {
+    return fetch(this.url(`/v1/runs/${encodeURIComponent(runId)}/events`), {
+      method: 'GET',
+      headers: this.headers({ Accept: 'text/event-stream' }),
+      signal: opts.signal,
+    });
+  }
+
+  /** Resolve a pending approval gate for a run. */
+  respondApproval(runId: string, choice: string): Promise<unknown> {
+    return this.requestJson(`/v1/runs/${encodeURIComponent(runId)}/approval`, {
+      method: 'POST',
+      body: JSON.stringify({ choice }),
+    });
+  }
+
+  /** Interrupt a running agent. */
+  stopRun(runId: string): Promise<unknown> {
+    return this.requestJson(`/v1/runs/${encodeURIComponent(runId)}/stop`, { method: 'POST' });
   }
 
   listModels(): Promise<HermesModelsResponse> {

@@ -5,7 +5,7 @@
  * `type`. Keeping this explicit (rather than multiplexing one `message` event the way LibreChat
  * does) makes the stream self-describing and the client handlers trivially typed.
  */
-import type { Message, NormalizedUsage, ToolStepStatus } from './types';
+import type { ApprovalChoice, Message, NormalizedUsage, ToolStepStatus } from './types';
 
 export enum ChatStreamEventType {
   /** Assistant message row created; carries the ids the client should render against. */
@@ -16,6 +16,10 @@ export enum ChatStreamEventType {
   Reasoning = 'reasoning',
   /** A tool invocation started or finished. */
   ToolStep = 'tool_step',
+  /** The agent is paused awaiting the user's approval to run a tool (Runs engine only). */
+  Approval = 'approval',
+  /** A pending approval was resolved; the client should clear the prompt. */
+  ApprovalResolved = 'approval_resolved',
   /** An image produced by the agent. */
   Image = 'image',
   /** Conversation title (re)generated. */
@@ -53,6 +57,22 @@ export interface ToolStepEvent {
   durationMs?: number;
 }
 
+export interface ApprovalEvent {
+  type: ChatStreamEventType.Approval;
+  runId: string;
+  command: string;
+  description?: string;
+  choices: ApprovalChoice[];
+  /** When false, the UI must not offer "always" (a security warning downgraded it). */
+  allowPermanent: boolean;
+}
+
+export interface ApprovalResolvedEvent {
+  type: ChatStreamEventType.ApprovalResolved;
+  runId: string;
+  choice: ApprovalChoice;
+}
+
 export interface ImageEvent {
   type: ChatStreamEventType.Image;
   url: string;
@@ -81,6 +101,8 @@ export type ChatStreamEvent =
   | DeltaEvent
   | ReasoningEvent
   | ToolStepEvent
+  | ApprovalEvent
+  | ApprovalResolvedEvent
   | ImageEvent
   | TitleEvent
   | FinalEvent

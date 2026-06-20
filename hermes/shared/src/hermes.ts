@@ -147,6 +147,76 @@ export interface HermesSkillsResponse {
   data: HermesSkill[];
 }
 
+/* ----------------------------- Runs API (agentic engine) ----------------------------- */
+
+export interface HermesRunRequest {
+  input: string;
+  instructions?: string;
+  session_id?: string;
+  conversation_history?: Array<{ role: string; content: string }>;
+  model?: string;
+}
+
+export interface HermesRunCreatedResponse {
+  run_id: string;
+  status: string;
+}
+
+/** Run-stream event names — carried in the `event` field of each `data:` JSON frame. */
+export enum HermesRunEvent {
+  MessageDelta = 'message.delta',
+  ToolStarted = 'tool.started',
+  ToolCompleted = 'tool.completed',
+  Reasoning = 'reasoning.available',
+  ApprovalRequest = 'approval.request',
+  ApprovalResponded = 'approval.responded',
+  RunCompleted = 'run.completed',
+  RunFailed = 'run.failed',
+  RunCancelled = 'run.cancelled',
+}
+
+export interface HermesRunEventBase {
+  event: string;
+  run_id: string;
+  timestamp?: number;
+}
+
+export interface HermesRunMessageDelta extends HermesRunEventBase {
+  delta: string;
+}
+
+export interface HermesRunToolEvent extends HermesRunEventBase {
+  tool: string;
+  preview?: string;
+  duration?: number;
+  error?: boolean;
+}
+
+export interface HermesRunReasoning extends HermesRunEventBase {
+  text: string;
+}
+
+export interface HermesRunApprovalRequest extends HermesRunEventBase {
+  command?: string;
+  description?: string;
+  choices?: string[];
+  allow_permanent?: boolean;
+}
+
+export interface HermesRunApprovalResponded extends HermesRunEventBase {
+  choice: string;
+  resolved?: number;
+}
+
+export interface HermesRunCompleted extends HermesRunEventBase {
+  output?: string;
+  usage?: HermesUsageTokens;
+}
+
+export interface HermesRunFailed extends HermesRunEventBase {
+  error?: string;
+}
+
 export interface HermesCapabilitiesResponse {
   object: string;
   platform?: string;

@@ -1,0 +1,125 @@
+import crypto from 'node:crypto';
+import type { MessageContentPart } from '@hermes/shared';
+import { ContentPartType } from '@hermes/shared';
+import { prisma } from '../db';
+import { notFound, unauthorized } from '../errors';
+import { gatewayPool } from '../hermes/pool';
+import { toJsonInput } from '../json';
+
+/** Shared turn helpers used by both chat engines (Sessions stream + agentic Runs). */
+
+export function deriveTitle(text: string): string {
+  const firstLine = text.trim().split('\n', 1)[0] ?? '';
+  const compact = firstLine.replace(/\s+/g, ' ').trim();
+  if (compact.length <= 48) {
+    return compact || 'New Chat';
+  }
+  return `${compact.slice(0, 47)}…`;
+}
+
+/** Resolve + authorize the user and conversation, and pick the pool gateway for this turn. */
+export async function loadTurnContext(userId: string, conversationId: string) {
+  const [user, conversation] = await Promise.all([
+    prisma.user.findUnique({ where: { id: userId } }),
+    prisma.conversation.findFirst({ where: { id: conversationId, userId } }),
+  ]);
+  if (!user) {
+    throw unauthorized();
+  }
+  if (!conversation) {
+    throw notFound('Conversation not found');
+  }
+  const pooled =
+    (conversation.hermesGatewayId
+      ? gatewayPool.byGatewayId(conversation.hermesGatewayId)
+      : undefined) ?? gatewayPool.resolve(conversation.model ?? user.model);
+  return { user, conversation, pooled };
+}
+
+export type TurnContext = Awaited<ReturnType<typeof loadTurnContext>>;
+
+/** Ensure the conversation has a backing Hermes session; returns its id. */
+export async function ensureSession(ctx: TurnContext): Promise<string> {
+  if (ctx.conversation.hermesSessionId) {
+    return ctx.conversation.hermesSessionId;
+  }
+  // No title: Hermes' SessionDB enforces globally-unique session titles, so our
+  // default "New Chat" would collide across conversations (400 invalid_title).
+  const session = await ctx.pooled.client.createSession({
+    model: ctx.pooled.model,
+    system_prompt: ctx.user.instructions ?? undefined,
+  });
+  await prisma.conversation.update({
+    where: { id: ctx.conversation.id },
+    data: { hermesSessionId: session.id, hermesGatewayId: ctx.pooled.id, model: ctx.pooled.model },
+  });
+  return session.id;
+}
+
+/** Persist the user's message, threaded after the latest message. */
+export async function persistUserMessage(ctx: TurnContext, text: string) {
+  const lastMessage = await prisma.message.findFirst({
+    where: { conversationId: ctx.conversation.id },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true },
+  });
+  const content: MessageContentPart[] = [{ type: ContentPartType.Text, text }];
+  const userMessage = await prisma.message.create({
+    data: {
+      id: crypto.randomUUID(),
+      conversationId: ctx.conversation.id,
+      userId: ctx.user.id,
+      role: 'user',
+      text,
+      content: toJsonInput(content),
+      parentMessageId: lastMessage?.id ?? null,
+    },
+  });
+  return { userMessage, isFirstTurn: !lastMessage };
+}
+
+/** Prior turns as Hermes `conversation_history` (the Runs engine doesn't auto-load from the session). */
+export async function buildConversationHistory(
+  conversationId: string,
+): Promise<Array<{ role: string; content: string }>> {
+  const messages = await prisma.message.findMany({
+    where: { conversationId },
+    orderBy: { createdAt: 'asc' },
+    select: { role: true, text: true },
+  });
+  return messages
+    .filter((m) => m.text.length > 0 && (m.role === 'user' || m.role === 'assistant'))
+    .map((m) => ({ role: m.role, content: m.text }));
+}
+
+/** Persist the assembled assistant message and bump the conversation's updatedAt. */
+export async function persistAssistantMessage(params: {
+  ctx: TurnContext;
+  assistantId: string;
+  userMessageId: string;
+  sessionId: string;
+  text: string;
+  content: MessageContentPart[];
+  finishReason: string;
+  errored: boolean;
+}) {
+  const { ctx, assistantId, userMessageId, sessionId, text, content, finishReason, errored } = params;
+  const assistantMessage = await prisma.message.create({
+    data: {
+      id: assistantId,
+      conversationId: ctx.conversation.id,
+      userId: ctx.user.id,
+      role: 'assistant',
+      text,
+      content: toJsonInput(content),
+      parentMessageId: userMessageId,
+      finishReason,
+      error: errored,
+    },
+  });
+  await prisma.conversation.update({
+    where: { id: ctx.conversation.id },
+    data: { hermesSessionId: sessionId },
+  });
+  return assistantMessage;
+}
