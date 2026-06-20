@@ -112,3 +112,14 @@ export function useDeleteConversation() {
     },
   });
 }
+
+export function useForkConversation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiRequest<Conversation>('POST', `/api/conversations/${id}/fork`, {}),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
+    },
+  });
+}

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import crypto from 'node:crypto';
 import { z } from 'zod';
 import type { Conversation as ApiConversation, CursorPage } from '@hermes/shared';
 import { prisma } from '../db';
@@ -7,6 +8,7 @@ import { asyncHandler, badRequest, notFound } from '../errors';
 import { getUserId, requireAuth } from '../auth/middleware';
 import { gatewayPool } from '../hermes/pool';
 import { requireParam } from '../http';
+import { toJsonInput } from '../json';
 import { toApiConversation } from '../conversations/mapper';
 
 const listQuery = z.object({
@@ -92,6 +94,69 @@ conversationsRouter.patch(
       data: { title: input.title.trim() },
     });
     res.json(toApiConversation(conversation));
+  }),
+);
+
+conversationsRouter.post(
+  '/:id/fork',
+  asyncHandler(async (req, res) => {
+    const userId = getUserId(req);
+    const source = await prisma.conversation.findFirst({
+      where: { id: requireParam(req, 'id'), userId },
+    });
+    if (!source) {
+      throw notFound('Conversation not found');
+    }
+    if (!source.hermesSessionId || !source.hermesGatewayId) {
+      throw badRequest('Nothing to branch yet — send a message first', 'nothing_to_branch');
+    }
+    const pooled = gatewayPool.byGatewayId(source.hermesGatewayId);
+    if (!pooled) {
+      throw badRequest('Source gateway unavailable', 'gateway_unavailable');
+    }
+
+    // Fork the Hermes session so the branch carries the transcript forward (works for both the
+    // Sessions and Runs engines). A unique title sidesteps Hermes' globally-unique-title rule.
+    const forked = await pooled.client.forkSession(source.hermesSessionId, {
+      title: `branch-${crypto.randomBytes(4).toString('hex')}`,
+    });
+
+    const sourceMessages = await prisma.message.findMany({
+      where: { conversationId: source.id },
+      orderBy: { createdAt: 'asc' },
+    });
+    const idMap = new Map(sourceMessages.map((m) => [m.id, crypto.randomUUID()]));
+
+    const branch = await prisma.$transaction(async (tx) => {
+      const created = await tx.conversation.create({
+        data: {
+          userId,
+          title: `${source.title} (branch)`.slice(0, 200),
+          model: source.model,
+          hermesSessionId: forked.id,
+          hermesGatewayId: source.hermesGatewayId,
+        },
+      });
+      if (sourceMessages.length > 0) {
+        await tx.message.createMany({
+          data: sourceMessages.map((m) => ({
+            id: idMap.get(m.id)!,
+            conversationId: created.id,
+            userId,
+            role: m.role,
+            text: m.text,
+            content: toJsonInput(m.content),
+            parentMessageId: m.parentMessageId ? (idMap.get(m.parentMessageId) ?? null) : null,
+            finishReason: m.finishReason,
+            error: m.error,
+            createdAt: m.createdAt,
+          })),
+        });
+      }
+      return created;
+    });
+
+    res.status(201).json(toApiConversation(branch));
   }),
 );
 

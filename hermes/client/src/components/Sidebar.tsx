@@ -5,6 +5,7 @@ import { useAuth } from '~/auth/AuthContext';
 import {
   useConversations,
   useDeleteConversation,
+  useForkConversation,
   useRenameConversation,
 } from '~/data/queries';
 import { Button, Spinner } from '~/components/ui';
@@ -16,6 +17,7 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings: () => void }): JSX
   const conversationsQuery = useConversations();
   const deleteConversation = useDeleteConversation();
   const renameConversation = useRenameConversation();
+  const forkConversation = useForkConversation();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
 
@@ -39,6 +41,11 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings: () => void }): JSX
     if (conversationId === id) {
       navigate('/');
     }
+  };
+
+  const branch = async (id: string) => {
+    const created = await forkConversation.mutateAsync(id);
+    navigate(`/c/${created.id}`);
   };
 
   return (
@@ -99,6 +106,15 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings: () => void }): JSX
                 aria-label="Rename conversation"
               >
                 Rename
+              </button>
+              <button
+                type="button"
+                onClick={() => void branch(conversation.id)}
+                className="px-1 text-xs text-zinc-400 opacity-0 hover:text-zinc-100 group-hover:opacity-100"
+                aria-label="Branch conversation"
+                title="Create a new conversation that continues from this one"
+              >
+                Branch
               </button>
               <button
                 type="button"

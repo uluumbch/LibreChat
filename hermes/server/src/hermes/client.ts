@@ -77,6 +77,18 @@ export class HermesClient {
     return data as HermesSession;
   }
 
+  /** Branch a session: Hermes carries the transcript forward via lineage and returns the child. */
+  async forkSession(sourceId: string, body: { title?: string; id?: string } = {}): Promise<HermesSession> {
+    const data = await this.requestJson<CreateSessionResponse>(
+      `/api/sessions/${encodeURIComponent(sourceId)}/fork`,
+      { method: 'POST', body: JSON.stringify(body) },
+    );
+    if ('session' in data && data.session) {
+      return data.session;
+    }
+    return data as HermesSession;
+  }
+
   /** Primary chat surface: streams the cleanest tool-progress events. */
   chatStream(
     sessionId: string,
