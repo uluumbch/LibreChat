@@ -8,3 +8,10 @@ build/
 coverage/
 # Prisma generated client
 server/src/generated/
+
+# The repo-root .gitignore has broad rules (`data/`, `*.d.ts`) that also match
+# Hermes-Chat *source*. Re-include it so it gets committed (build output and the
+# Prisma client stay ignored via dist/ and server/src/generated/ above).
+!client/src/data/
+!client/src/data/**
+!**/*.d.ts
