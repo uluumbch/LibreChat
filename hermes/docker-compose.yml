@@ -45,7 +45,7 @@ services:
     command:
       - sh
       - -c
-      - 'if [ -z "$$OPENROUTER_API_KEY" ] && [ -z "$$DEEPSEEK_API_KEY" ]; then echo "[hermes-agent] set OPENROUTER_API_KEY or DEEPSEEK_API_KEY in hermes/.env" >&2; fi; if [ -n "$$HERMES_PROVIDER" ]; then hermes config set model.provider "$$HERMES_PROVIDER" >/dev/null 2>&1 || true; fi; if [ -n "$$HERMES_MODEL" ]; then hermes config set model.default "$$HERMES_MODEL" >/dev/null 2>&1 || true; fi; exec hermes gateway run'
+      - 'if [ -z "$$OPENROUTER_API_KEY" ] && [ -z "$$DEEPSEEK_API_KEY" ]; then echo "[hermes-agent] set OPENROUTER_API_KEY or DEEPSEEK_API_KEY in hermes/.env" >&2; fi; if [ -n "$$HERMES_PROVIDER" ]; then hermes config set model.provider "$$HERMES_PROVIDER" >/dev/null 2>&1 || true; fi; if [ -n "$$HERMES_MODEL" ]; then hermes config set model.default "$$HERMES_MODEL" >/dev/null 2>&1 || true; fi; if [ -n "$$HERMES_BASE_URL" ]; then hermes config set model.base_url "$$HERMES_BASE_URL" >/dev/null 2>&1 || true; elif [ -n "$$HERMES_PROVIDER" ]; then hermes config set model.base_url "" >/dev/null 2>&1 || true; fi; exec hermes gateway run'
     environment:
       API_SERVER_ENABLED: 'true'
       API_SERVER_HOST: '0.0.0.0'
@@ -60,6 +60,10 @@ services:
       #   DeepSeek:   HERMES_PROVIDER=deepseek  HERMES_MODEL=deepseek-chat
       HERMES_PROVIDER: ${HERMES_PROVIDER:-}
       HERMES_MODEL: ${HERMES_MODEL:-}
+      # Optional explicit endpoint override. Normally leave empty: switching
+      # HERMES_PROVIDER clears any stale base_url so the provider's own endpoint
+      # is used (e.g. DeepSeek → https://api.deepseek.com/v1).
+      HERMES_BASE_URL: ${HERMES_BASE_URL:-}
     volumes:
       - hermes-agent-data:/opt/data
     ports:
