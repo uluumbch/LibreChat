@@ -53,7 +53,12 @@ export class HermesClient {
       throw new HttpError(502, `Hermes gateway unreachable (${this.gateway.id})`, 'hermes_unreachable');
     }
     if (!res.ok) {
-      throw new HttpError(502, `Hermes ${path} failed: ${res.status}`, 'hermes_upstream');
+      const detail = await res.text().catch(() => '');
+      throw new HttpError(
+        502,
+        `Hermes ${path} failed: ${res.status}${detail ? ` — ${detail.slice(0, 500)}` : ''}`,
+        'hermes_upstream',
+      );
     }
     return (await res.json()) as T;
   }

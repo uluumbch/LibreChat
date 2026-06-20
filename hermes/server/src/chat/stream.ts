@@ -56,8 +56,10 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<void> {
   // Ensure a backing Hermes session.
   let sessionId = conversation.hermesSessionId;
   if (!sessionId) {
+    // No title: Hermes' SessionDB enforces globally-unique session titles, so our
+    // default "New Chat" would collide across conversations (400 invalid_title). The
+    // display title lives in Postgres; the Hermes session doesn't need one.
     const session = await pooled.client.createSession({
-      title: conversation.title,
       model: pooled.model,
       system_prompt: user.instructions ?? undefined,
     });
