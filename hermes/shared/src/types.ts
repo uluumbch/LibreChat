@@ -189,3 +189,13 @@ export interface ModelsResponse {
 export interface ToolsetsResponse {
   items: ToolsetOption[];
 }
+
+export interface SkillOption {
+  name: string;
+  description?: string;
+  category?: string;
+}
+
+export interface SkillsResponse {
+  items: SkillOption[];
+}

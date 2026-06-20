@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import type { ModelOption, ToolsetOption } from '@hermes/shared';
+import type { ModelOption, SkillOption, ToolsetOption } from '@hermes/shared';
 import { asyncHandler } from '../errors';
 import { requireAuth } from '../auth/middleware';
 import { config } from '../config';
@@ -32,6 +32,20 @@ discoveryRouter.get(
       label: toolset.label,
       description: toolset.description,
       tools: toolset.tools,
+    }));
+    res.json({ items });
+  }),
+);
+
+/** Skills the agent has installed (read-only browser for the UI). */
+discoveryRouter.get(
+  '/skills',
+  asyncHandler(async (_req, res) => {
+    const response = await gatewayPool.resolve(config.defaultModel).client.listSkills();
+    const items: SkillOption[] = response.data.map((skill) => ({
+      name: skill.name,
+      description: skill.description,
+      category: skill.category,
     }));
     res.json({ items });
   }),

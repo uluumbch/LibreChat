@@ -10,6 +10,7 @@ import type {
   CursorPage,
   Message,
   ModelsResponse,
+  SkillsResponse,
   ToolsetsResponse,
   UpdateProfileRequest,
   User,
@@ -68,6 +69,14 @@ export function useToolsets() {
   return useQuery({
     queryKey: queryKeys.toolsets,
     queryFn: () => apiRequest<ToolsetsResponse>('GET', '/api/discovery/toolsets'),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useSkills() {
+  return useQuery({
+    queryKey: queryKeys.skills,
+    queryFn: () => apiRequest<SkillsResponse>('GET', '/api/discovery/skills'),
     staleTime: 5 * 60 * 1000,
   });
 }

@@ -136,6 +136,17 @@ export interface HermesToolsetsResponse {
   data: HermesToolset[];
 }
 
+export interface HermesSkill {
+  name: string;
+  description?: string;
+  category?: string;
+}
+
+export interface HermesSkillsResponse {
+  object: string;
+  data: HermesSkill[];
+}
+
 export interface HermesCapabilitiesResponse {
   object: string;
   platform?: string;

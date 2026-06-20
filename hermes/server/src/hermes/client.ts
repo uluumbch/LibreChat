@@ -5,6 +5,7 @@ import type {
   HermesModelsResponse,
   HermesSession,
   HermesSessionChatRequest,
+  HermesSkillsResponse,
   HermesToolsetsResponse,
 } from '@hermes/shared';
 import { HERMES_SESSION_ID_HEADER, HERMES_SESSION_KEY_HEADER } from '@hermes/shared';
@@ -111,6 +112,10 @@ export class HermesClient {
 
   listToolsets(): Promise<HermesToolsetsResponse> {
     return this.requestJson('/v1/toolsets');
+  }
+
+  listSkills(): Promise<HermesSkillsResponse> {
+    return this.requestJson('/v1/skills');
   }
 
   capabilities(): Promise<HermesCapabilitiesResponse> {

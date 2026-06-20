@@ -5,4 +5,5 @@ export const queryKeys = {
   profile: ['profile'] as const,
   models: ['models'] as const,
   toolsets: ['toolsets'] as const,
+  skills: ['skills'] as const,
 };
