@@ -15,7 +15,7 @@ import type {
 } from '@hermes/shared';
 import { HERMES_SESSION_ID_HEADER, HERMES_SESSION_KEY_HEADER } from '@hermes/shared';
 import type { GatewayConfig } from '../config';
-import { HttpError } from '../errors';
+import { HttpError, serviceBusy } from '../errors';
 
 type CreateSessionResponse = { object?: string; session?: HermesSession } | HermesSession;
 
@@ -59,6 +59,9 @@ export class HermesClient {
       throw new HttpError(502, `Hermes gateway unreachable (${this.gateway.id})`, 'hermes_unreachable');
     }
     if (!res.ok) {
+      if (res.status === 429) {
+        throw serviceBusy();
+      }
       const detail = await res.text().catch(() => '');
       throw new HttpError(
         502,

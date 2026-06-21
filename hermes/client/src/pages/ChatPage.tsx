@@ -84,7 +84,15 @@ export default function ChatPage(): JSX.Element {
           )}
         </div>
         {chat.error && (
-          <div className="px-4 py-1 text-center text-xs text-red-400">{chat.error}</div>
+          <div
+            className={`px-4 py-1 text-center text-xs ${
+              chat.errorCode === 'hermes_busy' || chat.errorCode === 'connection'
+                ? 'text-amber-400'
+                : 'text-red-400'
+            }`}
+          >
+            {chat.error}
+          </div>
         )}
         {chat.pendingApproval && (
           <div className="px-4 pt-2">

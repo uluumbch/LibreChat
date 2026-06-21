@@ -43,6 +43,8 @@ export interface UseChatResult {
   messages: Message[];
   isStreaming: boolean;
   error: string | null;
+  /** Error classifier so the UI can render transient issues (busy/connection) calmly. */
+  errorCode: string | null;
   isLoadingHistory: boolean;
   /** A pending tool-approval gate (agentic engine), or null. */
   pendingApproval: ApprovalEvent | null;
@@ -64,6 +66,7 @@ export function useChat(conversationId: string | null): UseChatResult {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [pendingApproval, setPendingApproval] = useState<ApprovalEvent | null>(null);
 
   const sseRef = useRef<SSE | null>(null);
@@ -166,6 +169,7 @@ export function useChat(conversationId: string | null): UseChatResult {
         return;
       }
       setError(null);
+      setErrorCode(null);
       setIsStreaming(true);
       setPendingApproval(null);
       finishedRef.current = false;
@@ -253,13 +257,16 @@ export function useChat(conversationId: string | null): UseChatResult {
 
       sse.addEventListener(ChatStreamEventType.Error, (event: MessageEvent) => {
         let message = 'Something went wrong';
+        let code: string | undefined;
         try {
-          const data = JSON.parse(event.data) as { message?: string };
+          const data = JSON.parse(event.data) as { message?: string; code?: string };
           message = data.message ?? message;
+          code = data.code;
         } catch {
           // non-JSON error payload
         }
         setError(message);
+        setErrorCode(code ?? null);
         const failedId = assistantIdRef.current;
         if (failedId) {
           setMessages((prev) =>
@@ -273,7 +280,8 @@ export function useChat(conversationId: string | null): UseChatResult {
         if (finishedRef.current) {
           return;
         }
-        setError('Connection lost');
+        setError('Connection lost — please try again.');
+        setErrorCode('connection');
         finish();
       });
 
@@ -307,6 +315,7 @@ export function useChat(conversationId: string | null): UseChatResult {
     messages,
     isStreaming,
     error,
+    errorCode,
     isLoadingHistory: historyQuery.isLoading && conversationId !== null,
     pendingApproval,
     send,

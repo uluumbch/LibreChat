@@ -30,6 +30,16 @@ at the **session** layer:
 A "user profile" here is a DB-stored **preferences** record (model, persona, tool visibility, memory
 toggle) — not a per-user Hermes OS profile.
 
+### Scaling the pool
+
+`HERMES_GATEWAYS` is a JSON array, so you can run **several gateways** — including more than one for the
+same model to add capacity. The router pins each conversation to a gateway (a Hermes session is
+gateway-local) but spreads **new** conversations across the **least-loaded, healthy** gateway for the
+requested model. Each gateway caps at 8 concurrent runs (Hermes' limit is 10); when the whole pool is
+saturated a turn fails fast as a friendly `hermes_busy` rather than hanging. Gateway health is probed
+in the background and updated reactively on request failures; `GET /health` returns a per-gateway
+snapshot (`{ id, model, healthy, activeRuns, availableSlots }`) for observability.
+
 ## Run with Docker (recommended)
 
 The stack runs the **real Hermes agent** (built from the `vendor/hermes-agent` submodule — a fork of

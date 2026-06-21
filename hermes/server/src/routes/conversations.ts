@@ -72,7 +72,7 @@ conversationsRouter.post(
     const input = createBody.parse(req.body);
     const user = await prisma.user.findUnique({ where: { id: userId }, select: { model: true } });
     const model = input.model ?? user?.model ?? config.defaultModel;
-    if (!gatewayPool.forModel(model)) {
+    if (!gatewayPool.hasModel(model)) {
       throw badRequest(`Unknown model: ${model}`, 'unknown_model');
     }
     const conversation = await prisma.conversation.create({

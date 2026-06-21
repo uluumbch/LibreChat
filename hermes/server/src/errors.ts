@@ -18,6 +18,9 @@ export const badRequest = (message: string, code?: string) => new HttpError(400,
 export const unauthorized = (message = 'Unauthorized') => new HttpError(401, message);
 export const forbidden = (message = 'Forbidden') => new HttpError(403, message);
 export const notFound = (message = 'Not found') => new HttpError(404, message);
+export const serviceBusy = (
+  message = 'The agent is busy right now — please try again in a moment.',
+) => new HttpError(503, message, 'hermes_busy');
 
 type AsyncHandler = (req: Request, res: Response, next: NextFunction) => Promise<unknown>;
 
