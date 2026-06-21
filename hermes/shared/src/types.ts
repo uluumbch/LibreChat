@@ -135,6 +135,16 @@ export interface CursorPage<T> {
   nextCursor: string | null;
 }
 
+export interface SearchResultItem {
+  conversation: Conversation;
+  /** A short excerpt around the match in a message, when the hit was in message text. */
+  snippet?: string;
+}
+
+export interface SearchResponse {
+  items: SearchResultItem[];
+}
+
 export interface CreateConversationRequest {
   title?: string;
   model?: string;

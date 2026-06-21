@@ -6,4 +6,5 @@ export const queryKeys = {
   models: ['models'] as const,
   toolsets: ['toolsets'] as const,
   skills: ['skills'] as const,
+  search: (q: string) => ['search', q] as const,
 };

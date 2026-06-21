@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import crypto from 'node:crypto';
 import { z } from 'zod';
-import type { Conversation as ApiConversation, CursorPage } from '@hermes/shared';
+import type { Conversation as ApiConversation, CursorPage, SearchResultItem } from '@hermes/shared';
 import { prisma } from '../db';
 import { config } from '../config';
 import { asyncHandler, badRequest, notFound } from '../errors';
@@ -22,6 +22,19 @@ const createBody = z.object({
 });
 
 const updateBody = z.object({ title: z.string().min(1).max(200) });
+
+const searchQuery = z.object({ q: z.string().min(1).max(200) });
+
+/** A short excerpt centered on the first match of `term` in `text`. */
+function snippet(text: string, term: string): string {
+  const idx = text.toLowerCase().indexOf(term.toLowerCase());
+  if (idx < 0) {
+    return text.slice(0, 120);
+  }
+  const start = Math.max(0, idx - 40);
+  const end = Math.min(text.length, idx + term.length + 60);
+  return `${start > 0 ? '…' : ''}${text.slice(start, end).trim()}${end < text.length ? '…' : ''}`;
+}
 
 export const conversationsRouter: Router = Router();
 conversationsRouter.use(requireAuth);
@@ -61,6 +74,51 @@ conversationsRouter.post(
       data: { userId, title: input.title?.trim() || 'New Chat', model },
     });
     res.status(201).json(toApiConversation(conversation));
+  }),
+);
+
+// Must precede GET /:id so "search" isn't captured as a conversation id.
+conversationsRouter.get(
+  '/search',
+  asyncHandler(async (req, res) => {
+    const userId = getUserId(req);
+    const term = searchQuery.parse(req.query).q.trim();
+    if (term.length === 0) {
+      res.json({ items: [] });
+      return;
+    }
+    const messageMatches = await prisma.message.findMany({
+      where: { userId, text: { contains: term, mode: 'insensitive' } },
+      orderBy: { createdAt: 'desc' },
+      select: { conversationId: true, text: true },
+      take: 100,
+    });
+    const snippetByConvo = new Map<string, string>();
+    for (const message of messageMatches) {
+      if (!snippetByConvo.has(message.conversationId)) {
+        snippetByConvo.set(message.conversationId, snippet(message.text, term));
+      }
+    }
+    const titleMatches = await prisma.conversation.findMany({
+      where: { userId, title: { contains: term, mode: 'insensitive' } },
+      select: { id: true },
+      take: 30,
+    });
+    const ids = new Set<string>([...snippetByConvo.keys(), ...titleMatches.map((c) => c.id)]);
+    if (ids.size === 0) {
+      res.json({ items: [] });
+      return;
+    }
+    const conversations = await prisma.conversation.findMany({
+      where: { userId, id: { in: [...ids] } },
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+      take: 30,
+    });
+    const items: SearchResultItem[] = conversations.map((conversation) => ({
+      conversation: toApiConversation(conversation),
+      snippet: snippetByConvo.get(conversation.id),
+    }));
+    res.json({ items });
   }),
 );
 
