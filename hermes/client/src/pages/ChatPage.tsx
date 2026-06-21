@@ -6,6 +6,7 @@ import { MessageList } from '~/components/MessageList';
 import { UsageBar } from '~/components/UsageBar';
 import { ApprovalPrompt } from '~/components/ApprovalPrompt';
 import { SettingsModal } from '~/components/SettingsModal';
+import { JobsModal } from '~/components/JobsModal';
 import { Spinner } from '~/components/ui';
 import { useChat } from '~/chat/useChat';
 import { useCreateConversation } from '~/data/queries';
@@ -34,6 +35,7 @@ export default function ChatPage(): JSX.Element {
   const chat = useChat(convId);
   const createConversation = useCreateConversation();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [jobsOpen, setJobsOpen] = useState(false);
   const initialSentRef = useRef<string | null>(null);
 
   const initial = location.state as InitialState | null;
@@ -58,7 +60,7 @@ export default function ChatPage(): JSX.Element {
 
   return (
     <div className="flex h-full bg-surface-dark text-zinc-100">
-      <Sidebar onOpenSettings={() => setSettingsOpen(true)} />
+      <Sidebar onOpenSettings={() => setSettingsOpen(true)} onOpenJobs={() => setJobsOpen(true)} />
       <main className="flex min-w-0 flex-1 flex-col">
         {convId !== null && !chat.isLoadingHistory && <UsageBar conversationId={convId} />}
         <div className="flex-1 overflow-y-auto">
@@ -87,6 +89,7 @@ export default function ChatPage(): JSX.Element {
         />
       </main>
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+      {jobsOpen && <JobsModal onClose={() => setJobsOpen(false)} />}
     </div>
   );
 }

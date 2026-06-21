@@ -8,7 +8,10 @@ import type {
   Conversation,
   ConversationUsage,
   CreateConversationRequest,
+  CreateJobRequest,
   CursorPage,
+  JobsResponse,
+  JobSummary,
   Message,
   ModelsResponse,
   SearchResponse,
@@ -90,6 +93,45 @@ export function useSkills() {
     queryKey: queryKeys.skills,
     queryFn: () => apiRequest<SkillsResponse>('GET', '/api/discovery/skills'),
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useJobs() {
+  return useQuery({
+    queryKey: queryKeys.jobs,
+    queryFn: () => apiRequest<JobsResponse>('GET', '/api/jobs'),
+    staleTime: 30 * 1000,
+  });
+}
+
+export function useCreateJob() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateJobRequest) => apiRequest<JobSummary>('POST', '/api/jobs', body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.jobs });
+    },
+  });
+}
+
+export function useDeleteJob() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiRequest<void>('DELETE', `/api/jobs/${id}`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.jobs });
+    },
+  });
+}
+
+export function useJobAction() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, action }: { id: string; action: 'pause' | 'resume' | 'run' }) =>
+      apiRequest<JobSummary>('POST', `/api/jobs/${id}/${action}`, {}),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.jobs });
+    },
   });
 }
 

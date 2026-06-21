@@ -11,7 +11,13 @@ import {
 } from '~/data/queries';
 import { Button, Spinner } from '~/components/ui';
 
-export function Sidebar({ onOpenSettings }: { onOpenSettings: () => void }): JSX.Element {
+export function Sidebar({
+  onOpenSettings,
+  onOpenJobs,
+}: {
+  onOpenSettings: () => void;
+  onOpenJobs: () => void;
+}): JSX.Element {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const { conversationId } = useParams();
@@ -186,6 +192,9 @@ export function Sidebar({ onOpenSettings }: { onOpenSettings: () => void }): JSX
         <div className="flex gap-2">
           <Button variant="ghost" className="flex-1 ring-1 ring-white/10" onClick={onOpenSettings}>
             Settings
+          </Button>
+          <Button variant="ghost" className="flex-1 ring-1 ring-white/10" onClick={onOpenJobs}>
+            Jobs
           </Button>
           <Button variant="ghost" className="ring-1 ring-white/10" onClick={() => void logout()}>
             Logout

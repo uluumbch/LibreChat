@@ -2,6 +2,9 @@ import type {
   HermesCapabilitiesResponse,
   HermesCreateSessionRequest,
   HermesHealthResponse,
+  HermesJobCreateRequest,
+  HermesJobResponse,
+  HermesJobsResponse,
   HermesModelsResponse,
   HermesRunCreatedResponse,
   HermesRunRequest,
@@ -162,6 +165,28 @@ export class HermesClient {
   /** Interrupt a running agent. */
   stopRun(runId: string): Promise<unknown> {
     return this.requestJson(`/v1/runs/${encodeURIComponent(runId)}/stop`, { method: 'POST' });
+  }
+
+  /* ----- Jobs API (scheduled cron; gateway-global — scoped per user in the BFF) ----- */
+
+  listJobs(): Promise<HermesJobsResponse> {
+    return this.requestJson('/api/jobs');
+  }
+
+  createJob(body: HermesJobCreateRequest): Promise<HermesJobResponse> {
+    return this.requestJson('/api/jobs', { method: 'POST', body: JSON.stringify(body) });
+  }
+
+  getJob(id: string): Promise<HermesJobResponse> {
+    return this.requestJson(`/api/jobs/${encodeURIComponent(id)}`);
+  }
+
+  deleteJob(id: string): Promise<unknown> {
+    return this.requestJson(`/api/jobs/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
+  jobAction(id: string, action: 'pause' | 'resume' | 'run'): Promise<unknown> {
+    return this.requestJson(`/api/jobs/${encodeURIComponent(id)}/${action}`, { method: 'POST' });
   }
 
   listModels(): Promise<HermesModelsResponse> {

@@ -225,6 +225,37 @@ export interface HermesRunFailed extends HermesRunEventBase {
   error?: string;
 }
 
+/* ----------------------------- Jobs API (scheduled cron) ----------------------------- */
+
+export interface HermesJob {
+  id: string;
+  name?: string;
+  prompt?: string;
+  schedule_display?: string;
+  enabled?: boolean;
+  state?: string;
+  next_run_at?: number | null;
+  last_run_at?: number | null;
+  last_status?: string | null;
+  last_error?: string | null;
+  deliver?: string;
+}
+
+export interface HermesJobsResponse {
+  jobs: HermesJob[];
+}
+
+export interface HermesJobResponse {
+  job: HermesJob;
+}
+
+export interface HermesJobCreateRequest {
+  name: string;
+  schedule: string;
+  prompt: string;
+  deliver?: string;
+}
+
 export interface HermesCapabilitiesResponse {
   object: string;
   platform?: string;

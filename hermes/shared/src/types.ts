@@ -157,6 +157,29 @@ export interface ConversationUsage {
   costUsd?: number;
 }
 
+/** A scheduled job (Hermes cron), scoped to the current user. */
+export interface JobSummary {
+  id: string;
+  name: string;
+  prompt: string;
+  scheduleDisplay: string;
+  enabled: boolean;
+  state?: string;
+  nextRunAt?: number | null;
+  lastRunAt?: number | null;
+  lastStatus?: string | null;
+}
+
+export interface JobsResponse {
+  items: JobSummary[];
+}
+
+export interface CreateJobRequest {
+  name: string;
+  schedule: string;
+  prompt: string;
+}
+
 export interface CreateConversationRequest {
   title?: string;
   model?: string;
