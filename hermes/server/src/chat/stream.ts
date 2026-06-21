@@ -16,6 +16,7 @@ import {
   loadTurnContext,
   persistAssistantMessage,
   persistUserMessage,
+  toHermesMessage,
 } from './turn';
 
 export interface RunChatTurnParams {
@@ -31,11 +32,11 @@ export interface RunChatTurnParams {
  * them into our normalized SSE protocol, and persists the assembled assistant message.
  */
 export async function runChatTurn(params: RunChatTurnParams): Promise<void> {
-  const { userId, conversationId, text, res } = params;
+  const { userId, conversationId, text, images, res } = params;
 
   const ctx = await loadTurnContext(userId, conversationId);
   const sessionId = await ensureSession(ctx);
-  const { userMessage, isFirstTurn } = await persistUserMessage(ctx, text);
+  const { userMessage, isFirstTurn } = await persistUserMessage(ctx, text, images);
 
   const assistantId = crypto.randomUUID();
   const writer = new SseWriter(res);
@@ -64,7 +65,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<void> {
   try {
     const response = await ctx.pooled.client.chatStream(
       sessionId,
-      { message: text, instructions: ctx.user.instructions ?? undefined },
+      { message: toHermesMessage(text, images), instructions: ctx.user.instructions ?? undefined },
       { sessionKey: sessionKeyFor(userId), signal: controller.signal },
     );
     if (!response.ok || !response.body) {

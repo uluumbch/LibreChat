@@ -12,7 +12,7 @@ import { requireParam } from '../http';
 const createBody = z.object({
   name: z.string().min(1).max(80),
   schedule: z.string().min(1).max(200),
-  prompt: z.string().min(1).max(10_000),
+  prompt: z.string().min(1).max(5000),
 });
 
 /**

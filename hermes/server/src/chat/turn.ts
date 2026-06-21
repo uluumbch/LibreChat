@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import type { MessageContentPart } from '@hermes/shared';
+import type { ChatImageInput, HermesContentPart, MessageContentPart } from '@hermes/shared';
 import { ContentPartType } from '@hermes/shared';
 import { prisma } from '../db';
 import { notFound, unauthorized } from '../errors';
@@ -56,14 +56,40 @@ export async function ensureSession(ctx: TurnContext): Promise<string> {
   return session.id;
 }
 
-/** Persist the user's message, threaded after the latest message. */
-export async function persistUserMessage(ctx: TurnContext, text: string) {
+/** Build the Hermes chat `message` field: a plain prompt, or multimodal parts when images are present. */
+export function toHermesMessage(
+  text: string,
+  images?: ChatImageInput[],
+): string | HermesContentPart[] {
+  if (!images || images.length === 0) {
+    return text;
+  }
+  const parts: HermesContentPart[] = [];
+  if (text) {
+    parts.push({ type: 'text', text });
+  }
+  for (const image of images) {
+    parts.push({ type: 'image_url', image_url: { url: image.url, detail: image.detail } });
+  }
+  return parts;
+}
+
+/** Persist the user's message (text + any inline images), threaded after the latest message. */
+export async function persistUserMessage(ctx: TurnContext, text: string, images?: ChatImageInput[]) {
   const lastMessage = await prisma.message.findFirst({
     where: { conversationId: ctx.conversation.id },
     orderBy: { createdAt: 'desc' },
     select: { id: true },
   });
-  const content: MessageContentPart[] = [{ type: ContentPartType.Text, text }];
+  const content: MessageContentPart[] = [];
+  if (text) {
+    content.push({ type: ContentPartType.Text, text });
+  }
+  if (images) {
+    for (const image of images) {
+      content.push({ type: ContentPartType.Image, url: image.url });
+    }
+  }
   const userMessage = await prisma.message.create({
     data: {
       id: crypto.randomUUID(),

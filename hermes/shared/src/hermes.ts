@@ -36,8 +36,22 @@ export interface HermesCreateSessionRequest {
   system_prompt?: string;
 }
 
+/** Multimodal content parts Hermes accepts on chat turns (OpenAI vision shape). */
+export interface HermesTextContentPart {
+  type: 'text';
+  text: string;
+}
+
+export interface HermesImageContentPart {
+  type: 'image_url';
+  image_url: { url: string; detail?: 'low' | 'high' | 'auto' };
+}
+
+export type HermesContentPart = HermesTextContentPart | HermesImageContentPart;
+
 export interface HermesSessionChatRequest {
-  message: string;
+  /** A plain prompt, or multimodal parts when the turn carries images. */
+  message: string | HermesContentPart[];
   instructions?: string;
 }
 
@@ -234,8 +248,8 @@ export interface HermesJob {
   schedule_display?: string;
   enabled?: boolean;
   state?: string;
-  next_run_at?: number | null;
-  last_run_at?: number | null;
+  next_run_at?: string | null;
+  last_run_at?: string | null;
   last_status?: string | null;
   last_error?: string | null;
   deliver?: string;

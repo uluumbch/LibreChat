@@ -37,7 +37,7 @@ function Part({ part }: { part: MessageContentPart }): JSX.Element | null {
           src={part.url}
           alt={part.alt ?? ''}
           loading="lazy"
-          className="my-2 max-w-full rounded-lg"
+          className="my-2 max-h-96 max-w-full rounded-lg"
         />
       );
     case ContentPartType.File:

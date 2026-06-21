@@ -3,12 +3,12 @@ import clsx from 'clsx';
 import { useCreateJob, useDeleteJob, useJobAction, useJobs } from '~/data/queries';
 import { Button, Spinner } from '~/components/ui';
 
-function formatWhen(ts?: number | null): string {
+function formatWhen(ts?: string | null): string {
   if (!ts) {
     return '—';
   }
-  const ms = ts < 1e12 ? ts * 1000 : ts; // Hermes uses epoch seconds.
-  return new Date(ms).toLocaleString();
+  const date = new Date(ts); // Hermes returns ISO-8601 timestamps.
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString();
 }
 
 export function JobsModal({ onClose }: { onClose: () => void }): JSX.Element {

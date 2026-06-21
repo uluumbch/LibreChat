@@ -165,8 +165,8 @@ export interface JobSummary {
   scheduleDisplay: string;
   enabled: boolean;
   state?: string;
-  nextRunAt?: number | null;
-  lastRunAt?: number | null;
+  nextRunAt?: string | null;
+  lastRunAt?: string | null;
   lastStatus?: string | null;
 }
 
