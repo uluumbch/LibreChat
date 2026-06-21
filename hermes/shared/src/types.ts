@@ -145,6 +145,18 @@ export interface SearchResponse {
   items: SearchResultItem[];
 }
 
+/** Per-conversation usage, read from the backing Hermes session. */
+export interface ConversationUsage {
+  messageCount?: number;
+  toolCallCount?: number;
+  apiCallCount?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  reasoningTokens?: number;
+  totalTokens?: number;
+  costUsd?: number;
+}
+
 export interface CreateConversationRequest {
   title?: string;
   model?: string;

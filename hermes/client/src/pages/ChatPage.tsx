@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Sidebar } from '~/components/Sidebar';
 import { Composer } from '~/components/Composer';
 import { MessageList } from '~/components/MessageList';
+import { UsageBar } from '~/components/UsageBar';
 import { ApprovalPrompt } from '~/components/ApprovalPrompt';
 import { SettingsModal } from '~/components/SettingsModal';
 import { Spinner } from '~/components/ui';
@@ -59,6 +60,7 @@ export default function ChatPage(): JSX.Element {
     <div className="flex h-full bg-surface-dark text-zinc-100">
       <Sidebar onOpenSettings={() => setSettingsOpen(true)} />
       <main className="flex min-w-0 flex-1 flex-col">
+        {convId !== null && !chat.isLoadingHistory && <UsageBar conversationId={convId} />}
         <div className="flex-1 overflow-y-auto">
           {convId === null ? (
             <EmptyState />

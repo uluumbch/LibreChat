@@ -6,6 +6,7 @@ import {
 } from '@tanstack/react-query';
 import type {
   Conversation,
+  ConversationUsage,
   CreateConversationRequest,
   CursorPage,
   Message,
@@ -38,6 +39,16 @@ export function useMessages(conversationId: string | null) {
     enabled: conversationId !== null,
     queryFn: () =>
       apiRequest<CursorPage<Message>>('GET', `/api/conversations/${conversationId}/messages?limit=100`),
+  });
+}
+
+export function useConversationUsage(conversationId: string | null) {
+  return useQuery({
+    queryKey: conversationId ? queryKeys.usage(conversationId) : ['usage', 'none'],
+    enabled: conversationId !== null,
+    queryFn: () =>
+      apiRequest<ConversationUsage>('GET', `/api/conversations/${conversationId}/usage`),
+    staleTime: 15 * 1000,
   });
 }
 

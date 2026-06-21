@@ -1,7 +1,12 @@
 import { Router } from 'express';
 import crypto from 'node:crypto';
 import { z } from 'zod';
-import type { Conversation as ApiConversation, CursorPage, SearchResultItem } from '@hermes/shared';
+import type {
+  Conversation as ApiConversation,
+  ConversationUsage,
+  CursorPage,
+  SearchResultItem,
+} from '@hermes/shared';
 import { prisma } from '../db';
 import { config } from '../config';
 import { asyncHandler, badRequest, notFound } from '../errors';
@@ -132,6 +137,47 @@ conversationsRouter.get(
       throw notFound('Conversation not found');
     }
     res.json(toApiConversation(conversation));
+  }),
+);
+
+conversationsRouter.get(
+  '/:id/usage',
+  asyncHandler(async (req, res) => {
+    const userId = getUserId(req);
+    const conversation = await prisma.conversation.findFirst({
+      where: { id: requireParam(req, 'id'), userId },
+    });
+    if (!conversation) {
+      throw notFound('Conversation not found');
+    }
+    const empty: ConversationUsage = {};
+    if (!conversation.hermesSessionId || !conversation.hermesGatewayId) {
+      res.json(empty);
+      return;
+    }
+    const pooled = gatewayPool.byGatewayId(conversation.hermesGatewayId);
+    if (!pooled) {
+      res.json(empty);
+      return;
+    }
+    // Hermes sweeps idle sessions; degrade gracefully to empty usage if it's gone.
+    const session = await pooled.client.getSession(conversation.hermesSessionId).catch(() => null);
+    if (!session) {
+      res.json(empty);
+      return;
+    }
+    const hasTokens = session.input_tokens != null || session.output_tokens != null;
+    const usage: ConversationUsage = {
+      messageCount: session.message_count,
+      toolCallCount: session.tool_call_count,
+      apiCallCount: session.api_call_count,
+      inputTokens: session.input_tokens,
+      outputTokens: session.output_tokens,
+      reasoningTokens: session.reasoning_tokens,
+      totalTokens: hasTokens ? (session.input_tokens ?? 0) + (session.output_tokens ?? 0) : undefined,
+      costUsd: session.actual_cost_usd ?? session.estimated_cost_usd,
+    };
+    res.json(usage);
   }),
 );
 

@@ -77,6 +77,17 @@ export class HermesClient {
     return data as HermesSession;
   }
 
+  /** Read a session's metadata (incl. token/message/tool-call counts and cost). */
+  async getSession(id: string): Promise<HermesSession> {
+    const data = await this.requestJson<CreateSessionResponse>(
+      `/api/sessions/${encodeURIComponent(id)}`,
+    );
+    if ('session' in data && data.session) {
+      return data.session;
+    }
+    return data as HermesSession;
+  }
+
   /** Branch a session: Hermes carries the transcript forward via lineage and returns the child. */
   async forkSession(sourceId: string, body: { title?: string; id?: string } = {}): Promise<HermesSession> {
     const data = await this.requestJson<CreateSessionResponse>(

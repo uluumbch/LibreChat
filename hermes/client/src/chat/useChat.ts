@@ -239,6 +239,7 @@ export function useChat(conversationId: string | null): UseChatResult {
         setMessages((prev) => prev.map((message) => (message.id === finalId ? data.message : message)));
         finish();
         void queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.usage(conversationId) });
       });
 
       sse.addEventListener(ChatStreamEventType.Error, (event: MessageEvent) => {
