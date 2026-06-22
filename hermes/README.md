@@ -45,6 +45,15 @@ so one account can't monopolize the pool or provider budget; over-quota turns ar
 the chat UI. The quota is in-memory per BFF instance — move it to a shared store (e.g. Redis) before
 running multiple BFF replicas.
 
+### Service tiers (paid-upgrade groundwork)
+
+Each user has a **tier**: `free` (shared pool, standard limits) or `dedicated` (a higher quota —
+`DEDICATED_*` — and, optionally, a **reserved gateway** their new conversations route to). An admin
+grants it via `PATCH /api/admin/users/:id/tier` with `{ "tier": "dedicated", "dedicatedGatewayId":
+"<pool gateway id>" }` (omit the id for higher limits on the shared pool); `{ "tier": "free" }` clears
+it. This is the operator seam for the upgrade until billing exists — bring-your-own provider keys are
+a later step. The tier is shown read-only in Settings.
+
 ## Run with Docker (recommended)
 
 The stack runs the **real Hermes agent** (built from the `vendor/hermes-agent` submodule — a fork of

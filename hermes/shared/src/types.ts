@@ -67,12 +67,17 @@ export interface HermesProfile {
   enabledToolsets: string[];
 }
 
+/** Service tier: shared pool ("free") or the paid upgrade ("dedicated"). */
+export type UserTier = 'free' | 'dedicated';
+
 export interface User {
   id: string;
   email: string;
   name: string | null;
   role: string;
   emailVerified: boolean;
+  /** Service tier — "dedicated" grants higher limits and an optional reserved gateway. */
+  tier: UserTier;
   hermesProfile: HermesProfile;
   createdAt: string;
   updatedAt: string;

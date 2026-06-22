@@ -8,7 +8,17 @@ process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret';
 process.env.HERMES_GATEWAYS ??=
   '[{"id":"default","model":"hermes-agent","baseURL":"http://localhost:8642","apiKey":"test"}]';
 
-const { toHermesMessage } = await import('./turn');
+const { toHermesMessage, selectGateway } = await import('./turn');
+const { GatewayPool } = await import('../hermes/pool');
+
+function pool() {
+  return new GatewayPool([
+    { id: 'g1', model: 'm', baseURL: 'http://localhost:8642', apiKey: 'k' },
+    { id: 'g2', model: 'm', baseURL: 'http://localhost:8642', apiKey: 'k' },
+  ]);
+}
+const freeUser = { tier: 'free', dedicatedGatewayId: null, model: 'm' };
+const dedicatedUser = { tier: 'dedicated', dedicatedGatewayId: 'g2', model: 'm' };
 
 /** The wire shape Hermes actually receives (undefined fields dropped by JSON). */
 function wire(text: string, images?: Array<{ url: string; detail?: 'low' | 'high' | 'auto' }>) {
@@ -50,4 +60,26 @@ test('multiple images preserve order', () => {
     { type: 'image_url', image_url: { url: 'https://example.com/1.png' } },
     { type: 'image_url', image_url: { url: 'https://example.com/2.png' } },
   ]);
+});
+
+test('selectGateway keeps an existing conversation on its pinned gateway', () => {
+  const chosen = selectGateway(pool(), { hermesGatewayId: 'g2', model: 'm' }, dedicatedUser);
+  assert.equal(chosen.id, 'g2');
+});
+
+test('selectGateway routes a dedicated user to their reserved gateway', () => {
+  const chosen = selectGateway(pool(), { hermesGatewayId: null, model: 'm' }, dedicatedUser);
+  assert.equal(chosen.id, 'g2');
+});
+
+test('selectGateway falls back to the shared pool for free users', () => {
+  const chosen = selectGateway(pool(), { hermesGatewayId: null, model: 'm' }, freeUser);
+  assert.equal(chosen.model, 'm');
+  assert.ok(['g1', 'g2'].includes(chosen.id));
+});
+
+test('selectGateway falls back when a dedicated binding is stale', () => {
+  const stale = { tier: 'dedicated', dedicatedGatewayId: 'ghost', model: 'm' };
+  const chosen = selectGateway(pool(), { hermesGatewayId: null, model: 'm' }, stale);
+  assert.ok(['g1', 'g2'].includes(chosen.id));
 });

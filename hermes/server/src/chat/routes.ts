@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { ChatStreamEventType } from '@hermes/shared';
+import { prisma } from '../db';
+import { config } from '../config';
 import { asyncHandler, notFound } from '../errors';
 import { getUserId, requireAuth } from '../auth/middleware';
 import { userQuota } from '../users/quota';
@@ -44,8 +46,11 @@ chatRouter.post(
     const input = sendSchema.parse(req.body);
     const userId = getUserId(req);
 
-    // Per-user quota protects the shared pool; deny over the SSE channel so the UI shows it calmly.
-    const lease = userQuota.tryAcquire(userId);
+    // Per-user quota protects the shared pool; dedicated (paid) users get a higher allowance.
+    // Denials go over the SSE channel so the UI shows them calmly.
+    const account = await prisma.user.findUnique({ where: { id: userId }, select: { tier: true } });
+    const policy = account?.tier === 'dedicated' ? config.quota.dedicated : config.quota.free;
+    const lease = userQuota.tryAcquire(userId, policy);
     if (!lease.ok) {
       const writer = new SseWriter(res);
       writer.send({ type: ChatStreamEventType.Error, message: lease.message, code: lease.code });

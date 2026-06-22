@@ -1,6 +1,10 @@
-import type { HermesProfile, User as ApiUser } from '@hermes/shared';
+import type { HermesProfile, User as ApiUser, UserTier } from '@hermes/shared';
 import type { User as DbUser } from '@prisma/client';
 import { config } from '../config';
+
+function toTier(tier: string): UserTier {
+  return tier === 'dedicated' ? 'dedicated' : 'free';
+}
 
 export function toHermesProfile(user: DbUser): HermesProfile {
   return {
@@ -18,6 +22,7 @@ export function toApiUser(user: DbUser): ApiUser {
     name: user.name ?? null,
     role: user.role,
     emailVerified: user.emailVerified,
+    tier: toTier(user.tier),
     hermesProfile: toHermesProfile(user),
     createdAt: user.createdAt.toISOString(),
     updatedAt: user.updatedAt.toISOString(),

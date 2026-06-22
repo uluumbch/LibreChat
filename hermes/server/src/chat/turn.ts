@@ -1,12 +1,33 @@
 import crypto from 'node:crypto';
 import type { ChatImageInput, HermesContentPart, MessageContentPart } from '@hermes/shared';
 import { ContentPartType } from '@hermes/shared';
+import type { GatewayPool, PooledGateway } from '../hermes/pool';
 import { prisma } from '../db';
 import { notFound, unauthorized } from '../errors';
 import { gatewayPool } from '../hermes/pool';
 import { toJsonInput } from '../json';
 
 /** Shared turn helpers used by both chat engines (Sessions stream + agentic Runs). */
+
+/**
+ * Choose the gateway for a turn: an existing conversation stays pinned (Hermes sessions are
+ * gateway-local); otherwise a dedicated (paid) user routes to their reserved gateway when set, and
+ * everyone else — or a stale binding — falls back to the least-loaded shared gateway for the model.
+ */
+export function selectGateway(
+  pool: GatewayPool,
+  conversation: { hermesGatewayId: string | null; model: string | null },
+  user: { tier: string; dedicatedGatewayId: string | null; model: string | null },
+): PooledGateway {
+  const pinned = conversation.hermesGatewayId
+    ? pool.byGatewayId(conversation.hermesGatewayId)
+    : undefined;
+  const dedicated =
+    user.tier === 'dedicated' && user.dedicatedGatewayId
+      ? pool.byGatewayId(user.dedicatedGatewayId)
+      : undefined;
+  return pinned ?? dedicated ?? pool.resolve(conversation.model ?? user.model);
+}
 
 export function deriveTitle(text: string): string {
   const firstLine = text.trim().split('\n', 1)[0] ?? '';
@@ -29,10 +50,7 @@ export async function loadTurnContext(userId: string, conversationId: string) {
   if (!conversation) {
     throw notFound('Conversation not found');
   }
-  const pooled =
-    (conversation.hermesGatewayId
-      ? gatewayPool.byGatewayId(conversation.hermesGatewayId)
-      : undefined) ?? gatewayPool.resolve(conversation.model ?? user.model);
+  const pooled = selectGateway(gatewayPool, conversation, user);
   return { user, conversation, pooled };
 }
 

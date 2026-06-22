@@ -1,11 +1,16 @@
-import { config } from '../config';
-
 /**
  * Per-user quota guarding the shared gateway pool and provider budget: a concurrency cap (how many
  * turns a user may have in flight) plus a token-bucket rate limit (sustained turns per minute).
- * In-memory and per-instance — fine for the co-located fixed pool; a multi-instance deployment would
- * move this to a shared store (e.g. Redis).
+ * Limits are supplied per call as a tier `QuotaPolicy`, so a dedicated (paid) user gets a higher
+ * allowance than a free one. In-memory and per-instance — fine for the co-located fixed pool; a
+ * multi-instance deployment would move this to a shared store (e.g. Redis).
  */
+
+/** Tier limits applied to a turn. */
+export interface QuotaPolicy {
+  maxConcurrentTurns: number;
+  turnsPerMinute: number;
+}
 
 interface Bucket {
   tokens: number;
@@ -29,23 +34,17 @@ export class UserQuota {
   private readonly active = new Map<string, number>();
   private readonly buckets = new Map<string, Bucket>();
 
-  constructor(
-    private readonly maxConcurrent: number,
-    private readonly capacity: number,
-    private readonly refillPerSec: number,
-  ) {}
-
-  /** Reserve a turn for the user, or explain why it's denied. Caller must `release()` a lease. */
-  tryAcquire(userId: string, now: number = Date.now()): QuotaResult {
+  /** Reserve a turn for the user under their tier `policy`, or explain why it's denied. */
+  tryAcquire(userId: string, policy: QuotaPolicy, now: number = Date.now()): QuotaResult {
     const activeCount = this.active.get(userId) ?? 0;
-    if (activeCount >= this.maxConcurrent) {
+    if (activeCount >= policy.maxConcurrentTurns) {
       return {
         ok: false,
         code: 'too_many_requests',
         message: 'You have too many chats in progress — finish one and try again.',
       };
     }
-    if (!this.takeToken(userId, now)) {
+    if (!this.takeToken(userId, policy.turnsPerMinute, now)) {
       return {
         ok: false,
         code: 'rate_limited',
@@ -71,10 +70,11 @@ export class UserQuota {
     };
   }
 
-  private takeToken(userId: string, now: number): boolean {
-    const bucket = this.buckets.get(userId) ?? { tokens: this.capacity, lastRefill: now };
+  private takeToken(userId: string, capacity: number, now: number): boolean {
+    const refillPerSec = capacity / 60;
+    const bucket = this.buckets.get(userId) ?? { tokens: capacity, lastRefill: now };
     const elapsedSec = Math.max(0, (now - bucket.lastRefill) / 1000);
-    bucket.tokens = Math.min(this.capacity, bucket.tokens + elapsedSec * this.refillPerSec);
+    bucket.tokens = Math.min(capacity, bucket.tokens + elapsedSec * refillPerSec);
     bucket.lastRefill = now;
     this.buckets.set(userId, bucket);
     if (bucket.tokens < 1) {
@@ -85,8 +85,4 @@ export class UserQuota {
   }
 }
 
-export const userQuota = new UserQuota(
-  config.quota.maxConcurrentTurns,
-  config.quota.turnsPerMinute,
-  config.quota.turnsPerMinute / 60,
-);
+export const userQuota = new UserQuota();
