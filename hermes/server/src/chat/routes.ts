@@ -1,7 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { ChatStreamEventType } from '@hermes/shared';
 import { asyncHandler, notFound } from '../errors';
 import { getUserId, requireAuth } from '../auth/middleware';
+import { userQuota } from '../users/quota';
+import { SseWriter } from './sse';
 import { runChatTurn } from './stream';
 import { respondToApproval, runChatTurnViaRuns } from './runs';
 
@@ -39,18 +42,28 @@ chatRouter.post(
   requireAuth,
   asyncHandler(async (req, res) => {
     const input = sendSchema.parse(req.body);
-    const base = {
-      userId: getUserId(req),
-      conversationId: input.conversationId,
-      text: input.text,
-      res,
-    };
+    const userId = getUserId(req);
+
+    // Per-user quota protects the shared pool; deny over the SSE channel so the UI shows it calmly.
+    const lease = userQuota.tryAcquire(userId);
+    if (!lease.ok) {
+      const writer = new SseWriter(res);
+      writer.send({ type: ChatStreamEventType.Error, message: lease.message, code: lease.code });
+      writer.close();
+      return;
+    }
+
+    const base = { userId, conversationId: input.conversationId, text: input.text, res };
     // The Runs API can't accept image input, so image turns always use the Sessions engine.
     const hasImages = (input.images?.length ?? 0) > 0;
-    if (input.agentic && !hasImages) {
-      await runChatTurnViaRuns(base);
-    } else {
-      await runChatTurn({ ...base, images: input.images });
+    try {
+      if (input.agentic && !hasImages) {
+        await runChatTurnViaRuns(base);
+      } else {
+        await runChatTurn({ ...base, images: input.images });
+      }
+    } finally {
+      lease.release();
     }
   }),
 );

@@ -18,6 +18,9 @@ interface InitialState {
   images?: ChatImageInput[];
 }
 
+/** Transient/expected conditions rendered calmly (amber) rather than as hard failures (red). */
+const SOFT_ERROR_CODES = new Set(['hermes_busy', 'rate_limited', 'too_many_requests', 'connection']);
+
 function EmptyState(): JSX.Element {
   return (
     <div className="flex h-full flex-col items-center justify-center px-4 text-center text-zinc-400">
@@ -86,9 +89,7 @@ export default function ChatPage(): JSX.Element {
         {chat.error && (
           <div
             className={`px-4 py-1 text-center text-xs ${
-              chat.errorCode === 'hermes_busy' || chat.errorCode === 'connection'
-                ? 'text-amber-400'
-                : 'text-red-400'
+              SOFT_ERROR_CODES.has(chat.errorCode ?? '') ? 'text-amber-400' : 'text-red-400'
             }`}
           >
             {chat.error}
