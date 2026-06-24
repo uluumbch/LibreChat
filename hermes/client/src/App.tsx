@@ -11,7 +11,7 @@ export default function App(): JSX.Element {
 
   if (status === 'loading') {
     return (
-      <div className="flex h-full items-center justify-center bg-surface-dark text-zinc-400">
+      <div className="flex h-full items-center justify-center bg-white text-ink-faint">
         <Spinner size={28} />
       </div>
     );

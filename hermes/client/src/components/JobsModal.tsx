@@ -48,43 +48,45 @@ export function JobsModal({ onClose }: { onClose: () => void }): JSX.Element {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      className="animate-hm-fade fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4 backdrop-blur-[3px]"
       onClick={onClose}
       role="presentation"
     >
       <div
-        className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl bg-surface-dark-muted p-6 text-zinc-100 shadow-2xl"
+        className="flex max-h-[88vh] w-[560px] max-w-[92vw] flex-col overflow-hidden rounded-[18px] border border-black/10 bg-white text-ink shadow-[0_30px_80px_rgba(0,0,0,0.25)]"
         onClick={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"
       >
-        <h2 className="text-lg font-semibold">Scheduled jobs</h2>
-        <p className="mb-4 mt-1 text-sm text-zinc-400">
-          The agent runs these on a schedule. Results are delivered on the gateway.
-        </p>
+        <div className="border-b border-black/[0.07] px-5 py-4">
+          <h2 className="text-base font-semibold">Scheduled jobs</h2>
+          <p className="mt-1 text-[13px] text-ink-muted">
+            The agent runs these on a schedule. Results are delivered on the gateway.
+          </p>
+        </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-          <div className="mb-4 space-y-2 rounded-xl bg-black/20 p-3">
+        <div className="hm-scroll min-h-0 flex-1 overflow-y-auto p-5">
+          <div className="mb-4 space-y-2 rounded-[12px] border border-black/[0.07] bg-surface-input p-3">
             <input
               value={name}
               onChange={(event) => setName(event.target.value)}
               placeholder="Name (e.g. Morning digest)"
-              className="w-full rounded-lg bg-black/30 px-3 py-2 text-sm outline-none ring-1 ring-white/10"
+              className="w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-sm outline-none focus:border-brand/40"
             />
             <input
               value={schedule}
               onChange={(event) => setSchedule(event.target.value)}
               placeholder="Schedule (cron, or e.g. every day at 9am)"
-              className="w-full rounded-lg bg-black/30 px-3 py-2 text-sm outline-none ring-1 ring-white/10"
+              className="w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-sm outline-none focus:border-brand/40"
             />
             <textarea
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
               rows={2}
               placeholder="Prompt to run on schedule…"
-              className="w-full resize-none rounded-lg bg-black/30 px-3 py-2 text-sm outline-none ring-1 ring-white/10"
+              className="w-full resize-none rounded-lg border border-black/10 bg-white px-3 py-2 text-sm outline-none focus:border-brand/40"
             />
-            {formError && <p className="text-xs text-red-400">{formError}</p>}
+            {formError && <p className="text-xs text-red-600">{formError}</p>}
             <div className="flex justify-end">
               <Button onClick={() => void submit()} disabled={!canCreate}>
                 {createJob.isPending ? <Spinner /> : 'Add job'}
@@ -94,45 +96,44 @@ export function JobsModal({ onClose }: { onClose: () => void }): JSX.Element {
 
           {jobsQuery.isLoading && <Spinner size={16} />}
           {!jobsQuery.isLoading && jobs.length === 0 && (
-            <p className="text-sm text-zinc-500">No scheduled jobs yet.</p>
+            <p className="text-sm text-ink-faint">No scheduled jobs yet.</p>
           )}
           <ul className="space-y-2">
             {jobs.map((job) => (
-              <li key={job.id} className="rounded-lg bg-black/20 px-3 py-2">
+              <li key={job.id} className="rounded-[10px] border border-black/[0.07] bg-white px-3 py-2.5">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="truncate text-sm font-medium text-zinc-200">{job.name}</div>
-                    <div className="mt-0.5 text-xs text-zinc-400">{job.scheduleDisplay || '—'}</div>
+                    <div className="truncate text-sm font-medium text-ink-soft">{job.name}</div>
+                    <div className="mt-0.5 font-mono text-xs text-ink-muted">
+                      {job.scheduleDisplay || '—'}
+                    </div>
                   </div>
                   <span
                     className={clsx(
-                      'shrink-0 rounded-full px-2 py-0.5 text-[10px] uppercase ring-1',
-                      job.enabled ? 'text-emerald-300 ring-emerald-500/40' : 'text-zinc-400 ring-white/15',
+                      'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase',
+                      job.enabled
+                        ? 'bg-emerald-500/10 text-emerald-700'
+                        : 'bg-black/[0.06] text-ink-faint',
                     )}
                   >
                     {job.enabled ? 'on' : 'paused'}
                   </span>
                 </div>
-                {job.prompt && <p className="mt-1 truncate text-xs text-zinc-500">{job.prompt}</p>}
-                <div className="mt-1 text-[11px] text-zinc-600">
+                {job.prompt && <p className="mt-1 truncate text-xs text-ink-faint">{job.prompt}</p>}
+                <div className="mt-1 text-[11px] text-ink-faint">
                   Next: {formatWhen(job.nextRunAt)}
                   {job.lastStatus ? ` · Last: ${job.lastStatus}` : ''}
                 </div>
                 <div className="mt-2 flex flex-wrap gap-2">
                   <Button
                     variant="ghost"
-                    className="ring-1 ring-white/10"
                     onClick={() =>
                       jobAction.mutate({ id: job.id, action: job.enabled ? 'pause' : 'resume' })
                     }
                   >
                     {job.enabled ? 'Pause' : 'Resume'}
                   </Button>
-                  <Button
-                    variant="ghost"
-                    className="ring-1 ring-white/10"
-                    onClick={() => jobAction.mutate({ id: job.id, action: 'run' })}
-                  >
+                  <Button variant="ghost" onClick={() => jobAction.mutate({ id: job.id, action: 'run' })}>
                     Run now
                   </Button>
                   <Button variant="danger" onClick={() => deleteJob.mutate(job.id)}>
@@ -144,7 +145,7 @@ export function JobsModal({ onClose }: { onClose: () => void }): JSX.Element {
           </ul>
         </div>
 
-        <div className="mt-4 flex justify-end">
+        <div className="flex justify-end border-t border-black/[0.07] px-5 py-4">
           <Button variant="ghost" onClick={onClose}>
             Close
           </Button>

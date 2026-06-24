@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { ConversationUsage } from '@hermes/shared';
 import { useConversationUsage } from '~/data/queries';
 
@@ -17,45 +18,72 @@ function hasAny(u: ConversationUsage): boolean {
   );
 }
 
-/** Slim per-conversation usage summary read from the backing Hermes session. */
+const Dot = (): JSX.Element => <span className="text-zinc-300"> · </span>;
+
+/** Slim inline per-conversation usage summary, rendered into the chat top bar. */
 export function UsageBar({ conversationId }: { conversationId: string }): JSX.Element | null {
   const { data } = useConversationUsage(conversationId);
   if (!data || !hasAny(data)) {
     return null;
   }
 
-  const chips: string[] = [];
+  const chips: ReactNode[] = [];
+  const push = (node: ReactNode) => {
+    if (chips.length > 0) {
+      chips.push(<Dot key={`d${chips.length}`} />);
+    }
+    chips.push(<span key={`c${chips.length}`}>{node}</span>);
+  };
+
   if (data.messageCount != null) {
-    chips.push(`${data.messageCount} msg`);
+    push(`${data.messageCount} msg`);
   }
   if (data.toolCallCount) {
-    chips.push(`${data.toolCallCount} tools`);
+    push(`${data.toolCallCount} tools`);
   }
   if (data.totalTokens != null) {
-    const io: string[] = [];
-    if (data.inputTokens != null) {
-      io.push(`↑${compact(data.inputTokens)}`);
-    }
-    if (data.outputTokens != null) {
-      io.push(`↓${compact(data.outputTokens)}`);
-    }
-    chips.push(`${compact(data.totalTokens)} tok${io.length ? ` (${io.join(' ')})` : ''}`);
+    push(
+      <>
+        {compact(data.totalTokens)} tok
+        {(data.inputTokens != null || data.outputTokens != null) && (
+          <span className="text-zinc-400">
+            {' ('}
+            {data.inputTokens != null && (
+              <>
+                <span className="text-emerald-600">↑</span>
+                {compact(data.inputTokens)}
+              </>
+            )}
+            {data.outputTokens != null && (
+              <>
+                {' '}
+                <span className="text-brand-dark">↓</span>
+                {compact(data.outputTokens)}
+              </>
+            )}
+            {')'}
+          </span>
+        )}
+      </>,
+    );
   }
   if (data.reasoningTokens) {
-    chips.push(`${compact(data.reasoningTokens)} reasoning`);
+    push(`${compact(data.reasoningTokens)} rsn`);
   }
   if (data.costUsd != null) {
-    chips.push(`$${data.costUsd < 0.01 ? data.costUsd.toFixed(4) : data.costUsd.toFixed(2)}`);
+    push(
+      <span className="text-ink-muted">
+        ${data.costUsd < 0.01 ? data.costUsd.toFixed(4) : data.costUsd.toFixed(2)}
+      </span>,
+    );
   }
 
   return (
     <div
-      className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 border-b border-white/5 px-4 py-1.5 text-xs text-zinc-500"
+      className="hidden whitespace-nowrap font-mono text-[11.5px] tracking-tight text-ink-faint md:block"
       aria-label="Conversation usage"
     >
-      {chips.map((chip) => (
-        <span key={chip}>{chip}</span>
-      ))}
+      {chips}
     </div>
   );
 }

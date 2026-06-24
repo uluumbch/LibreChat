@@ -16,7 +16,7 @@ export function MessageList({
   }, [messages]);
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-4 py-6">
+    <div className="mx-auto w-full max-w-[768px] px-6 pb-10 pt-7">
       {messages.map((message) => (
         <MessageItem key={message.id} message={message} streaming={isStreaming} />
       ))}

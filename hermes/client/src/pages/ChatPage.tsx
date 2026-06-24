@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import type { ChatImageInput } from '@hermes/shared';
+import { useAuth } from '~/auth/AuthContext';
 import { Sidebar } from '~/components/Sidebar';
 import { Composer } from '~/components/Composer';
 import { MessageList } from '~/components/MessageList';
@@ -8,7 +9,7 @@ import { UsageBar } from '~/components/UsageBar';
 import { ApprovalPrompt } from '~/components/ApprovalPrompt';
 import { SettingsModal } from '~/components/SettingsModal';
 import { JobsModal } from '~/components/JobsModal';
-import { Spinner } from '~/components/ui';
+import { BrandMark, Spinner } from '~/components/ui';
 import { useChat } from '~/chat/useChat';
 import { useCreateConversation } from '~/data/queries';
 
@@ -21,13 +22,37 @@ interface InitialState {
 /** Transient/expected conditions rendered calmly (amber) rather than as hard failures (red). */
 const SOFT_ERROR_CODES = new Set(['hermes_busy', 'rate_limited', 'too_many_requests', 'connection']);
 
-function EmptyState(): JSX.Element {
+const SUGGESTIONS = [
+  'Summarize the most recent changes in this project.',
+  'Find the failing test and propose a fix.',
+  'Search the web and write me a short brief.',
+];
+
+function EmptyState({ onPick }: { onPick: (text: string) => void }): JSX.Element {
   return (
-    <div className="flex h-full flex-col items-center justify-center px-4 text-center text-zinc-400">
-      <h1 className="text-2xl font-semibold text-zinc-200">Hermes Chat</h1>
-      <p className="mt-2 max-w-sm text-sm">
-        Start a conversation. Hermes can use its tools — you&apos;ll see each step as it works.
+    <div className="flex h-full flex-col items-center justify-center px-10 text-center">
+      <div className="mb-5">
+        <BrandMark size={54} radius={15} />
+      </div>
+      <h2 className="mb-2 text-[21px] font-semibold tracking-tight text-ink">
+        What should the agent do?
+      </h2>
+      <p className="mb-7 max-w-[420px] text-sm leading-relaxed text-ink-muted">
+        Hermes runs real tools — terminal, files, web search and installed skills — and shows every
+        step. Pick a conversation or start a new one.
       </p>
+      <div className="flex max-w-[520px] flex-wrap justify-center gap-2.5">
+        {SUGGESTIONS.map((text) => (
+          <button
+            key={text}
+            type="button"
+            onClick={() => onPick(text)}
+            className="max-w-[240px] rounded-[11px] border border-black/[0.08] bg-white px-3.5 py-2.5 text-left text-[13px] text-ink-soft transition hover:bg-surface-input"
+          >
+            {text}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -37,6 +62,7 @@ export default function ChatPage(): JSX.Element {
   const convId = conversationId ?? null;
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
   const chat = useChat(convId);
   const createConversation = useCreateConversation();
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -70,34 +96,70 @@ export default function ChatPage(): JSX.Element {
     });
   };
 
+  const headerTitle = useMemo(() => {
+    if (convId === null) {
+      return 'New chat';
+    }
+    const firstUser = chat.messages.find((m) => m.role === 'user');
+    return firstUser?.text?.trim() || 'Conversation';
+  }, [convId, chat.messages]);
+
+  const activeModel = user?.hermesProfile?.model ?? 'default';
+
   return (
-    <div className="flex h-full bg-surface-dark text-zinc-100">
+    <div className="flex h-full bg-white text-ink">
       <Sidebar onOpenSettings={() => setSettingsOpen(true)} onOpenJobs={() => setJobsOpen(true)} />
-      <main className="flex min-w-0 flex-1 flex-col">
-        {convId !== null && !chat.isLoadingHistory && <UsageBar conversationId={convId} />}
-        <div className="flex-1 overflow-y-auto">
+      <main
+        className="relative flex min-w-0 flex-1 flex-col"
+        style={{
+          background:
+            'radial-gradient(900px 500px at 70% -20%, rgba(99,102,241,0.05), transparent 55%), #ffffff',
+        }}
+      >
+        <header className="flex h-12 flex-none items-center justify-between gap-4 border-b border-black/[0.06] px-4">
+          <span className="min-w-0 truncate text-[13.5px] font-medium text-ink-soft">
+            {headerTitle}
+          </span>
+          <div className="flex flex-none items-center gap-3.5">
+            {convId !== null && !chat.isLoadingHistory && <UsageBar conversationId={convId} />}
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(true)}
+              className="flex items-center gap-2 rounded-lg border border-black/[0.08] bg-white px-2.5 py-1.5 transition hover:bg-surface-input"
+              title="Model — change in Settings"
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(52,211,153,0.6)]" />
+              <span className="font-mono text-xs text-ink-soft">{activeModel}</span>
+            </button>
+          </div>
+        </header>
+
+        <div className="hm-scroll flex-1 overflow-y-auto">
           {convId === null ? (
-            <EmptyState />
+            <EmptyState onPick={(text) => void onSend(text, false, [])} />
           ) : chat.isLoadingHistory ? (
-            <div className="flex h-full items-center justify-center text-zinc-500">
+            <div className="flex h-full items-center justify-center text-ink-faint">
               <Spinner size={24} />
             </div>
           ) : (
             <MessageList messages={chat.messages} isStreaming={chat.isStreaming} />
           )}
         </div>
+
         {chat.error && (
           <div
             className={`px-4 py-1 text-center text-xs ${
-              SOFT_ERROR_CODES.has(chat.errorCode ?? '') ? 'text-amber-400' : 'text-red-400'
+              SOFT_ERROR_CODES.has(chat.errorCode ?? '') ? 'text-amber-600' : 'text-red-600'
             }`}
           >
             {chat.error}
           </div>
         )}
         {chat.pendingApproval && (
-          <div className="px-4 pt-2">
-            <ApprovalPrompt approval={chat.pendingApproval} onRespond={chat.respondApproval} />
+          <div className="px-6 pt-2">
+            <div className="mx-auto max-w-[768px]">
+              <ApprovalPrompt approval={chat.pendingApproval} onRespond={chat.respondApproval} />
+            </div>
           </div>
         )}
         <Composer
