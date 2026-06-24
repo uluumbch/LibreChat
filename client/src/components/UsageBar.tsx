@@ -14,7 +14,7 @@ function compact(n: number): string {
 
 function hasAny(u: ConversationUsage): boolean {
   return Boolean(
-    u.messageCount || u.toolCallCount || u.inputTokens || u.outputTokens || u.totalTokens,
+    u.messageCount || u.toolCallCount || u.inputTokens || u.outputTokens || u.totalTokens || u.creditsUsed,
   );
 }
 
@@ -69,6 +69,9 @@ export function UsageBar({ conversationId }: { conversationId: string }): JSX.El
   }
   if (data.reasoningTokens) {
     push(`${compact(data.reasoningTokens)} rsn`);
+  }
+  if (data.creditsUsed) {
+    push(<span className="text-brand-dark">{data.creditsUsed.toLocaleString()} cr</span>);
   }
   if (data.costUsd != null) {
     push(

@@ -9,7 +9,6 @@ import type {
   AdminUserDetail,
   AdminUserToolset,
   SkillOption,
-  UsagePoint,
 } from '@hermes/shared';
 import { prisma } from '../db';
 import { config } from '../config';
@@ -19,6 +18,7 @@ import { gatewayPool } from '../hermes/pool';
 import { requireParam } from '../http';
 import { toApiUser, toCreditBalance } from '../users/profile';
 import { provisionDefaults } from '../users/provision';
+import { aggregateUsage, dailyUsageSeries } from '../billing/usage';
 import { JOB_NAME_RE, toJobSummary, userJobPrefix, userJobTag } from '../jobs/scope';
 
 const tierBody = z.object({
@@ -68,9 +68,6 @@ async function conversationCounts(): Promise<Map<string, number>> {
   return new Map(groups.map((g) => [g.userId, g._count._all]));
 }
 
-const dayLabel = (d: Date): string =>
-  d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-
 export const adminRouter: Router = Router();
 adminRouter.use(requireAuth, requireAdmin);
 
@@ -83,28 +80,12 @@ adminRouter.get(
     const since = new Date(Date.now() - CHART_DAYS * 24 * 60 * 60 * 1000);
     const recentMessages = await prisma.message.findMany({
       where: { role: 'assistant', createdAt: { gte: since } },
-      select: { createdAt: true },
+      select: { createdAt: true, creditsCharged: true },
     });
-
-    const buckets = new Map<string, number>();
-    const chart: UsagePoint[] = [];
-    for (let i = CHART_DAYS - 1; i >= 0; i--) {
-      const day = new Date();
-      day.setHours(0, 0, 0, 0);
-      day.setDate(day.getDate() - i);
-      const label = dayLabel(day);
-      buckets.set(label, 0);
-      chart.push({ label, count: 0 });
-    }
-    for (const message of recentMessages) {
-      const label = dayLabel(message.createdAt);
-      if (buckets.has(label)) {
-        buckets.set(label, (buckets.get(label) ?? 0) + 1);
-      }
-    }
-    for (const point of chart) {
-      point.count = buckets.get(point.label) ?? 0;
-    }
+    const chart = dailyUsageSeries(
+      recentMessages.map((m) => ({ createdAt: m.createdAt, credits: m.creditsCharged ?? 0 })),
+      CHART_DAYS,
+    );
 
     const activityRows = await prisma.message.findMany({
       where: { role: 'assistant' },
@@ -206,6 +187,24 @@ async function userJobs(userId: string): Promise<AdminUserDetail['jobs']> {
   }
 }
 
+async function userUsage(userId: string): Promise<AdminUserDetail['usage']> {
+  const since = new Date(Date.now() - CHART_DAYS * 24 * 60 * 60 * 1000);
+  const [totals, rows] = await Promise.all([
+    aggregateUsage({ userId }),
+    prisma.message.findMany({
+      where: { userId, role: 'assistant', createdAt: { gte: since } },
+      select: { createdAt: true, creditsCharged: true },
+    }),
+  ]);
+  return {
+    ...totals,
+    chart: dailyUsageSeries(
+      rows.map((m) => ({ createdAt: m.createdAt, credits: m.creditsCharged ?? 0 })),
+      CHART_DAYS,
+    ),
+  };
+}
+
 adminRouter.get(
   '/users/:id',
   asyncHandler(async (req, res) => {
@@ -214,11 +213,12 @@ adminRouter.get(
     if (!user) {
       throw notFound('User not found');
     }
-    const [count, toolsets, skills, jobs] = await Promise.all([
+    const [count, toolsets, skills, jobs, usage] = await Promise.all([
       prisma.conversation.count({ where: { userId: id } }),
       userToolsets(user),
       userSkills(),
       userJobs(id),
+      userUsage(id),
     ]);
     const detail: AdminUserDetail = {
       ...toAdminUser(user, count),
@@ -227,6 +227,7 @@ adminRouter.get(
       toolsets,
       skills,
       jobs,
+      usage,
     };
     res.json(detail);
   }),

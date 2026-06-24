@@ -73,7 +73,7 @@ export function Overview({
     );
   }
 
-  const maxBar = Math.max(1, ...data.chart.map((p) => p.count));
+  const maxBar = Math.max(1, ...data.chart.map((p) => p.credits));
 
   return (
     <>
@@ -123,9 +123,9 @@ export function Overview({
             }}
           >
             <div>
-              <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>Agent activity</h3>
+              <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>Credit consumption</h3>
               <p style={{ margin: '2px 0 0', fontSize: 11.5, color: '#a1a1aa' }}>
-                Assistant replies · last 14 days
+                Credits used · last 14 days
               </p>
             </div>
           </div>
@@ -144,13 +144,13 @@ export function Overview({
                 }}
               >
                 <div
-                  title={`${point.label} · ${point.count}`}
+                  title={`${point.label} · ${point.credits.toLocaleString()} credits · ${point.messages} replies`}
                   style={{
                     width: '100%',
                     borderRadius: '5px 5px 0 0',
                     background:
                       i === data.chart.length - 1 ? ACCENT : 'rgba(91,84,232,0.28)',
-                    height: `${Math.max(2, Math.round((point.count / maxBar) * 100))}%`,
+                    height: `${Math.max(2, Math.round((point.credits / maxBar) * 100))}%`,
                     transition: 'height .3s',
                   }}
                 />

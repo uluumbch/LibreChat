@@ -162,7 +162,10 @@ export interface SearchResponse {
   items: SearchResultItem[];
 }
 
-/** Per-conversation usage, read from the backing Hermes session. */
+/**
+ * Per-conversation usage. Token/credit/message totals come from our persisted message rows
+ * (durable); tool/api counts and cost are a best-effort overlay from the live Hermes session.
+ */
 export interface ConversationUsage {
   messageCount?: number;
   toolCallCount?: number;
@@ -171,6 +174,7 @@ export interface ConversationUsage {
   outputTokens?: number;
   reasoningTokens?: number;
   totalTokens?: number;
+  creditsUsed?: number;
   costUsd?: number;
 }
 
@@ -308,6 +312,7 @@ export interface AdminUserDetail extends AdminUser {
   toolsets: AdminUserToolset[];
   skills: SkillOption[];
   jobs: JobSummary[];
+  usage: UserUsageSummary;
 }
 
 export interface UpdateUserRequest {
@@ -340,12 +345,25 @@ export interface AdminJobsResponse {
   items: AdminJob[];
 }
 
-/** One bucket of the admin overview consumption chart. */
+/** One day-bucket of a consumption chart, aggregated from persisted message usage. */
 export interface UsagePoint {
   /** Day label, e.g. "Jun 12". */
   label: string;
-  /** Message volume in the bucket. */
-  count: number;
+  /** Credits charged in the bucket. */
+  credits: number;
+  /** Assistant replies in the bucket. */
+  messages: number;
+}
+
+/** Aggregated usage for one user, computed from their persisted assistant messages. */
+export interface UserUsageSummary {
+  creditsUsed: number;
+  totalTokens: number;
+  inputTokens: number;
+  outputTokens: number;
+  messageCount: number;
+  /** Recent daily spend (most recent last), for a sparkline. */
+  chart: UsagePoint[];
 }
 
 export interface AdminActivityEvent {

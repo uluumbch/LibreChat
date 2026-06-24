@@ -269,6 +269,41 @@ export function UserDrawer({
                 </div>
               </div>
 
+              <div style={{ marginBottom: 22 }}>
+                <div style={{ display: 'flex', gap: 18, marginBottom: 12 }}>
+                  {[
+                    { label: 'Credits used', value: detail.usage.creditsUsed.toLocaleString() },
+                    { label: 'Tokens', value: fmt(detail.usage.totalTokens) },
+                    { label: 'Replies', value: detail.usage.messageCount.toLocaleString() },
+                  ].map((stat) => (
+                    <div key={stat.label}>
+                      <div style={{ fontFamily: MONO, fontSize: 17, fontWeight: 650, color: '#18181b' }}>
+                        {stat.value}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#a1a1aa', marginTop: 2 }}>{stat.label}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ fontSize: 11, color: '#a1a1aa', marginBottom: 6 }}>Last 14 days</div>
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 40 }}>
+                  {(() => {
+                    const max = Math.max(1, ...detail.usage.chart.map((p) => p.credits));
+                    return detail.usage.chart.map((p, i) => (
+                      <div
+                        key={p.label + i}
+                        title={`${p.label} · ${p.credits.toLocaleString()} credits · ${p.messages} replies`}
+                        style={{
+                          flex: 1,
+                          borderRadius: '3px 3px 0 0',
+                          background: i === detail.usage.chart.length - 1 ? ACCENT : 'rgba(91,84,232,0.28)',
+                          height: `${Math.max(3, Math.round((p.credits / max) * 100))}%`,
+                        }}
+                      />
+                    ));
+                  })()}
+                </div>
+              </div>
+
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, color: ACCENT }}>
                 <ShieldIcon size={15} />
                 <h3

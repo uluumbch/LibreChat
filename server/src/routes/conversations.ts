@@ -14,6 +14,7 @@ import { getUserId, requireAuth } from '../auth/middleware';
 import { gatewayPool } from '../hermes/pool';
 import { requireParam } from '../http';
 import { toJsonInput } from '../json';
+import { aggregateUsage } from '../billing/usage';
 import { toApiConversation } from '../conversations/mapper';
 
 const listQuery = z.object({
@@ -150,33 +151,31 @@ conversationsRouter.get(
     if (!conversation) {
       throw notFound('Conversation not found');
     }
-    const empty: ConversationUsage = {};
-    if (!conversation.hermesSessionId || !conversation.hermesGatewayId) {
-      res.json(empty);
-      return;
-    }
-    const pooled = gatewayPool.byGatewayId(conversation.hermesGatewayId);
-    if (!pooled) {
-      res.json(empty);
-      return;
-    }
-    // Hermes sweeps idle sessions; degrade gracefully to empty usage if it's gone.
-    const session = await pooled.client.getSession(conversation.hermesSessionId).catch(() => null);
-    if (!session) {
-      res.json(empty);
-      return;
-    }
-    const hasTokens = session.input_tokens != null || session.output_tokens != null;
+
+    // Durable totals from our persisted message rows — survives Hermes' idle-session sweeps.
+    const totals = await aggregateUsage({ conversationId: conversation.id });
     const usage: ConversationUsage = {
-      messageCount: session.message_count,
-      toolCallCount: session.tool_call_count,
-      apiCallCount: session.api_call_count,
-      inputTokens: session.input_tokens,
-      outputTokens: session.output_tokens,
-      reasoningTokens: session.reasoning_tokens,
-      totalTokens: hasTokens ? (session.input_tokens ?? 0) + (session.output_tokens ?? 0) : undefined,
-      costUsd: session.actual_cost_usd ?? session.estimated_cost_usd,
+      messageCount: totals.messageCount,
+      inputTokens: totals.inputTokens || undefined,
+      outputTokens: totals.outputTokens || undefined,
+      totalTokens: totals.totalTokens || undefined,
+      creditsUsed: totals.creditsUsed,
     };
+
+    // Best-effort overlay from the live session for fields we don't persist (tools, reasoning, cost).
+    if (conversation.hermesSessionId && conversation.hermesGatewayId) {
+      const pooled = gatewayPool.byGatewayId(conversation.hermesGatewayId);
+      const session = pooled
+        ? await pooled.client.getSession(conversation.hermesSessionId).catch(() => null)
+        : null;
+      if (session) {
+        usage.toolCallCount = session.tool_call_count;
+        usage.apiCallCount = session.api_call_count;
+        usage.reasoningTokens = session.reasoning_tokens;
+        usage.costUsd = session.actual_cost_usd ?? session.estimated_cost_usd;
+      }
+    }
+
     res.json(usage);
   }),
 );
