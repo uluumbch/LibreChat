@@ -4,6 +4,7 @@ import { SSE } from 'sse.js';
 import type {
   ApprovalChoice,
   ApprovalEvent,
+  ChatImageInput,
   CreatedEvent,
   DeltaEvent,
   FinalEvent,
@@ -42,10 +43,12 @@ export interface UseChatResult {
   messages: Message[];
   isStreaming: boolean;
   error: string | null;
+  /** Error classifier so the UI can render transient issues (busy/connection) calmly. */
+  errorCode: string | null;
   isLoadingHistory: boolean;
   /** A pending tool-approval gate (agentic engine), or null. */
   pendingApproval: ApprovalEvent | null;
-  send: (text: string, agentic?: boolean) => void;
+  send: (text: string, agentic?: boolean, images?: ChatImageInput[]) => void;
   respondApproval: (choice: ApprovalChoice) => void;
   stop: () => void;
 }
@@ -63,6 +66,7 @@ export function useChat(conversationId: string | null): UseChatResult {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [pendingApproval, setPendingApproval] = useState<ApprovalEvent | null>(null);
 
   const sseRef = useRef<SSE | null>(null);
@@ -159,15 +163,24 @@ export function useChat(conversationId: string | null): UseChatResult {
   }, []);
 
   const send = useCallback(
-    (text: string, agentic = false) => {
+    (text: string, agentic = false, images: ChatImageInput[] = []) => {
       const trimmed = text.trim();
-      if (!conversationId || isStreaming || trimmed.length === 0) {
+      if (!conversationId || isStreaming || (trimmed.length === 0 && images.length === 0)) {
         return;
       }
       setError(null);
+      setErrorCode(null);
       setIsStreaming(true);
       setPendingApproval(null);
       finishedRef.current = false;
+
+      const userContent: MessageContentPart[] = [];
+      if (trimmed) {
+        userContent.push({ type: ContentPartType.Text, text: trimmed });
+      }
+      for (const image of images) {
+        userContent.push({ type: ContentPartType.Image, url: image.url });
+      }
 
       const tempUserId = `temp-user-${Date.now()}`;
       const optimisticUser: Message = {
@@ -176,7 +189,7 @@ export function useChat(conversationId: string | null): UseChatResult {
         userId: '',
         role: 'user',
         text: trimmed,
-        content: [{ type: ContentPartType.Text, text: trimmed }],
+        content: userContent,
         parentMessageId: null,
         finishReason: null,
         error: false,
@@ -190,7 +203,7 @@ export function useChat(conversationId: string | null): UseChatResult {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token ?? ''}`,
         },
-        payload: JSON.stringify({ conversationId, text: trimmed, agentic }),
+        payload: JSON.stringify({ conversationId, text: trimmed, images, agentic }),
       });
       sseRef.current = sse;
 
@@ -244,13 +257,16 @@ export function useChat(conversationId: string | null): UseChatResult {
 
       sse.addEventListener(ChatStreamEventType.Error, (event: MessageEvent) => {
         let message = 'Something went wrong';
+        let code: string | undefined;
         try {
-          const data = JSON.parse(event.data) as { message?: string };
+          const data = JSON.parse(event.data) as { message?: string; code?: string };
           message = data.message ?? message;
+          code = data.code;
         } catch {
           // non-JSON error payload
         }
         setError(message);
+        setErrorCode(code ?? null);
         const failedId = assistantIdRef.current;
         if (failedId) {
           setMessages((prev) =>
@@ -264,7 +280,8 @@ export function useChat(conversationId: string | null): UseChatResult {
         if (finishedRef.current) {
           return;
         }
-        setError('Connection lost');
+        setError('Connection lost — please try again.');
+        setErrorCode('connection');
         finish();
       });
 
@@ -298,6 +315,7 @@ export function useChat(conversationId: string | null): UseChatResult {
     messages,
     isStreaming,
     error,
+    errorCode,
     isLoadingHistory: historyQuery.isLoading && conversationId !== null,
     pendingApproval,
     send,

@@ -21,6 +21,10 @@ const envSchema = z.object({
   JWT_REFRESH_TTL: z.coerce.number().default(604800),
   HERMES_GATEWAYS: z.string().min(1),
   HERMES_DEFAULT_MODEL: z.string().optional(),
+  USER_MAX_CONCURRENT_TURNS: z.coerce.number().int().positive().default(3),
+  USER_TURNS_PER_MINUTE: z.coerce.number().int().positive().default(20),
+  DEDICATED_MAX_CONCURRENT_TURNS: z.coerce.number().int().positive().default(10),
+  DEDICATED_TURNS_PER_MINUTE: z.coerce.number().int().positive().default(120),
 });
 
 function parseGateways(raw: string): GatewayConfig[] {
@@ -62,6 +66,16 @@ function loadConfig() {
     },
     gateways,
     defaultModel,
+    quota: {
+      free: {
+        maxConcurrentTurns: env.USER_MAX_CONCURRENT_TURNS,
+        turnsPerMinute: env.USER_TURNS_PER_MINUTE,
+      },
+      dedicated: {
+        maxConcurrentTurns: env.DEDICATED_MAX_CONCURRENT_TURNS,
+        turnsPerMinute: env.DEDICATED_TURNS_PER_MINUTE,
+      },
+    },
   } as const;
 }
 

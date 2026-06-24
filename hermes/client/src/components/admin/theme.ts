@@ -110,13 +110,12 @@ export function relativeTime(iso: string): string {
   return `${Math.round(hours / 24)}d ago`;
 }
 
-/** Hermes cron emits epoch seconds; normalize and render relative-to-now. */
-export function jobWhen(ts?: number | null): string {
+/** Hermes cron emits ISO-8601 timestamps; render relative-to-now. */
+export function jobWhen(ts?: string | null): string {
   if (!ts) {
     return '—';
   }
-  const ms = ts < 1e12 ? ts * 1000 : ts;
-  const diff = ms - Date.now();
+  const diff = new Date(ts).getTime() - Date.now();
   if (diff <= 0) {
     return 'due';
   }

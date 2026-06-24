@@ -4,7 +4,7 @@ import type { ChatImageInput } from '@hermes/shared';
 import { ChatStreamEventType, HermesStreamEvent } from '@hermes/shared';
 import { prisma } from '../db';
 import { logger } from '../logger';
-import { HttpError } from '../errors';
+import { HttpError, serviceBusy } from '../errors';
 import { sessionKeyFor } from '../users/provision';
 import { toApiMessage } from '../messages/mapper';
 import { SseWriter } from './sse';
@@ -16,6 +16,7 @@ import {
   loadTurnContext,
   persistAssistantMessage,
   persistUserMessage,
+  toHermesMessage,
 } from './turn';
 
 export interface RunChatTurnParams {
@@ -31,11 +32,11 @@ export interface RunChatTurnParams {
  * them into our normalized SSE protocol, and persists the assembled assistant message.
  */
 export async function runChatTurn(params: RunChatTurnParams): Promise<void> {
-  const { userId, conversationId, text, res } = params;
+  const { userId, conversationId, text, images, res } = params;
 
   const ctx = await loadTurnContext(userId, conversationId);
   const sessionId = await ensureSession(ctx);
-  const { userMessage, isFirstTurn } = await persistUserMessage(ctx, text);
+  const { userMessage, isFirstTurn } = await persistUserMessage(ctx, text, images);
 
   const assistantId = crypto.randomUUID();
   const writer = new SseWriter(res);
@@ -64,10 +65,13 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<void> {
   try {
     const response = await ctx.pooled.client.chatStream(
       sessionId,
-      { message: text, instructions: ctx.user.instructions ?? undefined },
+      { message: toHermesMessage(text, images), instructions: ctx.user.instructions ?? undefined },
       { sessionKey: sessionKeyFor(userId), signal: controller.signal },
     );
     if (!response.ok || !response.body) {
+      if (response.status === 429) {
+        throw serviceBusy();
+      }
       throw new HttpError(502, `Hermes chat failed: ${response.status}`, 'hermes_upstream');
     }
     for await (const raw of parseSse(response.body)) {
@@ -78,11 +82,15 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<void> {
         break;
       }
     }
+    ctx.pooled.markHealthy();
   } catch (err) {
     if (controller.signal.aborted) {
       finishReason = 'aborted';
     } else {
       errored = true;
+      if (err instanceof HttpError && err.code === 'hermes_unreachable') {
+        ctx.pooled.markUnhealthy();
+      }
       logger.error({ err }, 'chat turn failed');
       writer.send({
         type: ChatStreamEventType.Error,

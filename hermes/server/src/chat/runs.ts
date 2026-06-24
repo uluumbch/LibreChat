@@ -3,7 +3,7 @@ import type { Response } from 'express';
 import { ChatStreamEventType } from '@hermes/shared';
 import { prisma } from '../db';
 import { logger } from '../logger';
-import { HttpError, notFound } from '../errors';
+import { HttpError, notFound, serviceBusy } from '../errors';
 import { gatewayPool } from '../hermes/pool';
 import { sessionKeyFor } from '../users/provision';
 import { toApiMessage } from '../messages/mapper';
@@ -89,6 +89,9 @@ export async function runChatTurnViaRuns(params: RunsChatTurnParams): Promise<vo
 
     const response = await ctx.pooled.client.runEvents(runId, { signal: controller.signal });
     if (!response.ok || !response.body) {
+      if (response.status === 429) {
+        throw serviceBusy();
+      }
       throw new HttpError(502, `Hermes run events failed: ${response.status}`, 'hermes_upstream');
     }
     for await (const raw of parseSse(response.body)) {
@@ -99,6 +102,7 @@ export async function runChatTurnViaRuns(params: RunsChatTurnParams): Promise<vo
         break;
       }
     }
+    ctx.pooled.markHealthy();
     finishReason = accumulator.finishReason;
     errored = accumulator.errored;
   } catch (err) {
@@ -109,6 +113,9 @@ export async function runChatTurnViaRuns(params: RunsChatTurnParams): Promise<vo
       }
     } else {
       errored = true;
+      if (err instanceof HttpError && err.code === 'hermes_unreachable') {
+        ctx.pooled.markUnhealthy();
+      }
       logger.error({ err }, 'agentic chat turn failed');
       writer.send({
         type: ChatStreamEventType.Error,

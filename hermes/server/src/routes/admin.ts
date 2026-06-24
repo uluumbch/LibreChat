@@ -17,9 +17,15 @@ import { asyncHandler, badRequest, notFound } from '../errors';
 import { requireAdmin, requireAuth } from '../auth/middleware';
 import { gatewayPool } from '../hermes/pool';
 import { requireParam } from '../http';
-import { toCreditBalance } from '../users/profile';
+import { toApiUser, toCreditBalance } from '../users/profile';
 import { provisionDefaults } from '../users/provision';
 import { JOB_NAME_RE, toJobSummary, userJobPrefix, userJobTag } from '../jobs/scope';
+
+const tierBody = z.object({
+  tier: z.enum(['free', 'dedicated']),
+  /** Reserve a specific pool gateway for this user (dedicated tier only). */
+  dedicatedGatewayId: z.string().min(1).nullable().optional(),
+});
 
 const LOW_CREDIT_RATIO = 0.15;
 const CHART_DAYS = 14;
@@ -236,7 +242,7 @@ adminRouter.patch(
   asyncHandler(async (req, res) => {
     const id = requireParam(req, 'id');
     const input = updateBody.parse(req.body);
-    if (input.model && !gatewayPool.forModel(input.model)) {
+    if (input.model && !gatewayPool.hasModel(input.model)) {
       throw badRequest(`Unknown model: ${input.model}`, 'unknown_model');
     }
     const exists = await prisma.user.findUnique({ where: { id }, select: { id: true } });
@@ -357,5 +363,33 @@ adminRouter.post(
       ownerName: owner?.name ?? owner?.email ?? 'Unknown',
       ownerEmail: owner?.email ?? '',
     });
+  }),
+);
+
+/**
+ * Grant or revoke a user's service tier — the operator seam for the paid upgrade until billing
+ * exists. Setting `dedicated` (optionally pinned to a reserved gateway) raises their quota and
+ * routes their new conversations to that gateway; `free` clears any binding.
+ */
+adminRouter.patch(
+  '/users/:id/tier',
+  asyncHandler(async (req, res) => {
+    const id = requireParam(req, 'id');
+    const input = tierBody.parse(req.body);
+    if (input.dedicatedGatewayId && !gatewayPool.byGatewayId(input.dedicatedGatewayId)) {
+      throw badRequest(`Unknown gateway: ${input.dedicatedGatewayId}`, 'unknown_gateway');
+    }
+    const target = await prisma.user.findUnique({ where: { id } });
+    if (!target) {
+      throw notFound('User not found');
+    }
+    const updated = await prisma.user.update({
+      where: { id },
+      data: {
+        tier: input.tier,
+        dedicatedGatewayId: input.tier === 'dedicated' ? input.dedicatedGatewayId ?? null : null,
+      },
+    });
+    res.json(toApiUser(updated));
   }),
 );

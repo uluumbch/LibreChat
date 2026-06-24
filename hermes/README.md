@@ -30,6 +30,30 @@ at the **session** layer:
 A "user profile" here is a DB-stored **preferences** record (model, persona, tool visibility, memory
 toggle) — not a per-user Hermes OS profile.
 
+### Scaling the pool
+
+`HERMES_GATEWAYS` is a JSON array, so you can run **several gateways** — including more than one for the
+same model to add capacity. The router pins each conversation to a gateway (a Hermes session is
+gateway-local) but spreads **new** conversations across the **least-loaded, healthy** gateway for the
+requested model. Each gateway caps at 8 concurrent runs (Hermes' limit is 10); when the whole pool is
+saturated a turn fails fast as a friendly `hermes_busy` rather than hanging. Gateway health is probed
+in the background and updated reactively on request failures; `GET /health` returns a per-gateway
+snapshot (`{ id, model, healthy, activeRuns, availableSlots }`) for observability.
+
+Each user is also held to a **per-user quota** (`USER_MAX_CONCURRENT_TURNS`, `USER_TURNS_PER_MINUTE`)
+so one account can't monopolize the pool or provider budget; over-quota turns are surfaced calmly in
+the chat UI. The quota is in-memory per BFF instance — move it to a shared store (e.g. Redis) before
+running multiple BFF replicas.
+
+### Service tiers (paid-upgrade groundwork)
+
+Each user has a **tier**: `free` (shared pool, standard limits) or `dedicated` (a higher quota —
+`DEDICATED_*` — and, optionally, a **reserved gateway** their new conversations route to). An admin
+grants it via `PATCH /api/admin/users/:id/tier` with `{ "tier": "dedicated", "dedicatedGatewayId":
+"<pool gateway id>" }` (omit the id for higher limits on the shared pool); `{ "tier": "free" }` clears
+it. This is the operator seam for the upgrade until billing exists — bring-your-own provider keys are
+a later step. The tier is shown read-only in Settings.
+
 ## Run with Docker (recommended)
 
 The stack runs the **real Hermes agent** (built from the `vendor/hermes-agent` submodule — a fork of

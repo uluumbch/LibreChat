@@ -1,12 +1,33 @@
 import crypto from 'node:crypto';
-import type { MessageContentPart } from '@hermes/shared';
+import type { ChatImageInput, HermesContentPart, MessageContentPart } from '@hermes/shared';
 import { ContentPartType } from '@hermes/shared';
+import type { GatewayPool, PooledGateway } from '../hermes/pool';
 import { prisma } from '../db';
 import { notFound, unauthorized } from '../errors';
 import { gatewayPool } from '../hermes/pool';
 import { toJsonInput } from '../json';
 
 /** Shared turn helpers used by both chat engines (Sessions stream + agentic Runs). */
+
+/**
+ * Choose the gateway for a turn: an existing conversation stays pinned (Hermes sessions are
+ * gateway-local); otherwise a dedicated (paid) user routes to their reserved gateway when set, and
+ * everyone else — or a stale binding — falls back to the least-loaded shared gateway for the model.
+ */
+export function selectGateway(
+  pool: GatewayPool,
+  conversation: { hermesGatewayId: string | null; model: string | null },
+  user: { tier: string; dedicatedGatewayId: string | null; model: string | null },
+): PooledGateway {
+  const pinned = conversation.hermesGatewayId
+    ? pool.byGatewayId(conversation.hermesGatewayId)
+    : undefined;
+  const dedicated =
+    user.tier === 'dedicated' && user.dedicatedGatewayId
+      ? pool.byGatewayId(user.dedicatedGatewayId)
+      : undefined;
+  return pinned ?? dedicated ?? pool.resolve(conversation.model ?? user.model);
+}
 
 export function deriveTitle(text: string): string {
   const firstLine = text.trim().split('\n', 1)[0] ?? '';
@@ -29,10 +50,7 @@ export async function loadTurnContext(userId: string, conversationId: string) {
   if (!conversation) {
     throw notFound('Conversation not found');
   }
-  const pooled =
-    (conversation.hermesGatewayId
-      ? gatewayPool.byGatewayId(conversation.hermesGatewayId)
-      : undefined) ?? gatewayPool.resolve(conversation.model ?? user.model);
+  const pooled = selectGateway(gatewayPool, conversation, user);
   return { user, conversation, pooled };
 }
 
@@ -56,14 +74,40 @@ export async function ensureSession(ctx: TurnContext): Promise<string> {
   return session.id;
 }
 
-/** Persist the user's message, threaded after the latest message. */
-export async function persistUserMessage(ctx: TurnContext, text: string) {
+/** Build the Hermes chat `message` field: a plain prompt, or multimodal parts when images are present. */
+export function toHermesMessage(
+  text: string,
+  images?: ChatImageInput[],
+): string | HermesContentPart[] {
+  if (!images || images.length === 0) {
+    return text;
+  }
+  const parts: HermesContentPart[] = [];
+  if (text) {
+    parts.push({ type: 'text', text });
+  }
+  for (const image of images) {
+    parts.push({ type: 'image_url', image_url: { url: image.url, detail: image.detail } });
+  }
+  return parts;
+}
+
+/** Persist the user's message (text + any inline images), threaded after the latest message. */
+export async function persistUserMessage(ctx: TurnContext, text: string, images?: ChatImageInput[]) {
   const lastMessage = await prisma.message.findFirst({
     where: { conversationId: ctx.conversation.id },
     orderBy: { createdAt: 'desc' },
     select: { id: true },
   });
-  const content: MessageContentPart[] = [{ type: ContentPartType.Text, text }];
+  const content: MessageContentPart[] = [];
+  if (text) {
+    content.push({ type: ContentPartType.Text, text });
+  }
+  if (images) {
+    for (const image of images) {
+      content.push({ type: ContentPartType.Image, url: image.url });
+    }
+  }
   const userMessage = await prisma.message.create({
     data: {
       id: crypto.randomUUID(),

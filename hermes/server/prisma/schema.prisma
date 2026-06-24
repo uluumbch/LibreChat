@@ -24,6 +24,11 @@ model User {
   creditsUsed      Int @default(0) @map("credits_used")
   lastTopupAt      DateTime? @map("last_topup_at")
 
+  // Service tier: "free" (shared pool) or "dedicated" (paid — higher limits + an optional
+  // reserved gateway). The provider key is still app-level; see dedicatedGatewayId.
+  tier               String  @default("free")
+  dedicatedGatewayId String? @map("dedicated_gateway_id")
+
   // hermes_profile (preferences only)
   model           String?
   instructions    String?

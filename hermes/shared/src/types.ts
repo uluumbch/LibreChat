@@ -77,6 +77,9 @@ export interface CreditBalance {
 
 export type AccountStatus = 'ACTIVE' | 'SUSPENDED';
 
+/** Service tier: shared pool ("free") or the paid upgrade ("dedicated"). */
+export type UserTier = 'free' | 'dedicated';
+
 export interface User {
   id: string;
   email: string;
@@ -85,6 +88,8 @@ export interface User {
   status: AccountStatus;
   emailVerified: boolean;
   credits: CreditBalance;
+  /** Service tier — "dedicated" grants higher limits and an optional reserved gateway. */
+  tier: UserTier;
   hermesProfile: HermesProfile;
   createdAt: string;
   updatedAt: string;
@@ -177,8 +182,8 @@ export interface JobSummary {
   scheduleDisplay: string;
   enabled: boolean;
   state?: string;
-  nextRunAt?: number | null;
-  lastRunAt?: number | null;
+  nextRunAt?: string | null;
+  lastRunAt?: string | null;
   lastStatus?: string | null;
 }
 

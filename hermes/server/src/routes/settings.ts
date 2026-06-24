@@ -31,7 +31,7 @@ profileRouter.patch(
   '/',
   asyncHandler(async (req, res) => {
     const input = updateBody.parse(req.body);
-    if (input.model && !gatewayPool.forModel(input.model)) {
+    if (input.model && !gatewayPool.hasModel(input.model)) {
       throw badRequest(`Unknown model: ${input.model}`, 'unknown_model');
     }
     const user = await prisma.user.update({

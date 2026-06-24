@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import type { ChatImageInput } from '@hermes/shared';
 import { Sidebar } from '~/components/Sidebar';
 import { Composer } from '~/components/Composer';
 import { MessageList } from '~/components/MessageList';
@@ -14,7 +15,11 @@ import { useCreateConversation } from '~/data/queries';
 interface InitialState {
   initialMessage?: string;
   agentic?: boolean;
+  images?: ChatImageInput[];
 }
+
+/** Transient/expected conditions rendered calmly (amber) rather than as hard failures (red). */
+const SOFT_ERROR_CODES = new Set(['hermes_busy', 'rate_limited', 'too_many_requests', 'connection']);
 
 function EmptyState(): JSX.Element {
   return (
@@ -42,20 +47,27 @@ export default function ChatPage(): JSX.Element {
 
   // First message of a freshly created conversation, handed over via navigation state.
   useEffect(() => {
-    if (convId && initial?.initialMessage && initialSentRef.current !== convId) {
-      initialSentRef.current = convId;
-      chat.send(initial.initialMessage, initial.agentic ?? false);
-      navigate(`/c/${convId}`, { replace: true });
+    if (!convId || initialSentRef.current === convId) {
+      return;
     }
+    const hasImages = (initial?.images?.length ?? 0) > 0;
+    if (!initial?.initialMessage && !hasImages) {
+      return;
+    }
+    initialSentRef.current = convId;
+    chat.send(initial?.initialMessage ?? '', initial?.agentic ?? false, initial?.images);
+    navigate(`/c/${convId}`, { replace: true });
   }, [convId, initial, chat, navigate]);
 
-  const onSend = async (text: string, agentic: boolean) => {
+  const onSend = async (text: string, agentic: boolean, images: ChatImageInput[]) => {
     if (convId) {
-      chat.send(text, agentic);
+      chat.send(text, agentic, images);
       return;
     }
     const conversation = await createConversation.mutateAsync({});
-    navigate(`/c/${conversation.id}`, { state: { initialMessage: text, agentic } satisfies InitialState });
+    navigate(`/c/${conversation.id}`, {
+      state: { initialMessage: text, agentic, images } satisfies InitialState,
+    });
   };
 
   return (
@@ -75,7 +87,13 @@ export default function ChatPage(): JSX.Element {
           )}
         </div>
         {chat.error && (
-          <div className="px-4 py-1 text-center text-xs text-red-400">{chat.error}</div>
+          <div
+            className={`px-4 py-1 text-center text-xs ${
+              SOFT_ERROR_CODES.has(chat.errorCode ?? '') ? 'text-amber-400' : 'text-red-400'
+            }`}
+          >
+            {chat.error}
+          </div>
         )}
         {chat.pendingApproval && (
           <div className="px-4 pt-2">
@@ -83,7 +101,7 @@ export default function ChatPage(): JSX.Element {
           </div>
         )}
         <Composer
-          onSend={(text, agentic) => void onSend(text, agentic)}
+          onSend={(text, agentic, images) => void onSend(text, agentic, images)}
           onStop={chat.stop}
           isStreaming={chat.isStreaming}
         />

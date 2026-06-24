@@ -29,11 +29,11 @@ test('toJobSummary strips the owner prefix from the display name', () => {
     prompt: 'summarize inbox',
     schedule_display: 'every day · 9:00 AM',
     enabled: true,
-    next_run_at: 1000,
+    next_run_at: '2026-06-24T09:00:00.000Z',
   };
   const summary = toJobSummary(job, prefix);
   assert.equal(summary.name, 'Morning digest');
   assert.equal(summary.prompt, 'summarize inbox');
   assert.equal(summary.enabled, true);
-  assert.equal(summary.nextRunAt, 1000);
+  assert.equal(summary.nextRunAt, '2026-06-24T09:00:00.000Z');
 });

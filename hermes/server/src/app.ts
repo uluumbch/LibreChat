@@ -6,6 +6,7 @@ import { pinoHttp } from 'pino-http';
 import { config } from './config';
 import { logger } from './logger';
 import { errorMiddleware } from './errors';
+import { gatewayPool } from './hermes/pool';
 import { authRouter } from './auth/routes';
 import { conversationsRouter } from './routes/conversations';
 import { messagesRouter } from './routes/messages';
@@ -24,7 +25,7 @@ export function createApp(): Express {
   app.use(cookieParser());
 
   app.get('/health', (_req, res) => {
-    res.json({ status: 'ok' });
+    res.json({ status: 'ok', gateways: gatewayPool.snapshot() });
   });
 
   app.use('/api/auth', authRouter);

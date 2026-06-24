@@ -2,9 +2,11 @@ import { createApp } from './app';
 import { config } from './config';
 import { logger } from './logger';
 import { disconnectDb, prisma } from './db';
+import { gatewayPool } from './hermes/pool';
 
 async function main(): Promise<void> {
   await prisma.$connect();
+  gatewayPool.startHealthChecks();
   const app = createApp();
   const server = app.listen(config.port, () => {
     logger.info(`Hermes-Chat BFF listening on :${config.port}`);
@@ -15,6 +17,7 @@ async function main(): Promise<void> {
 
   const shutdown = (signal: string): void => {
     logger.info(`${signal} received, shutting down`);
+    gatewayPool.stopHealthChecks();
     server.close(() => {
       void disconnectDb().finally(() => process.exit(0));
     });
