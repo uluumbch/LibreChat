@@ -46,9 +46,26 @@ chatRouter.post(
     const input = sendSchema.parse(req.body);
     const userId = getUserId(req);
 
+    const account = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { tier: true, creditsPurchased: true, creditsUsed: true },
+    });
+
+    // Out of credits: block before doing any work and nudge the user to top up.
+    // Sent over the SSE channel (soft error) so the UI shows a calm CTA, not a hard failure.
+    if (account && account.creditsPurchased - account.creditsUsed <= 0) {
+      const writer = new SseWriter(res);
+      writer.send({
+        type: ChatStreamEventType.Error,
+        message: "You're out of credits — ask your workspace admin to top up to keep chatting.",
+        code: 'insufficient_credits',
+      });
+      writer.close();
+      return;
+    }
+
     // Per-user quota protects the shared pool; dedicated (paid) users get a higher allowance.
     // Denials go over the SSE channel so the UI shows them calmly.
-    const account = await prisma.user.findUnique({ where: { id: userId }, select: { tier: true } });
     const policy = account?.tier === 'dedicated' ? config.quota.dedicated : config.quota.free;
     const lease = userQuota.tryAcquire(userId, policy);
     if (!lease.ok) {

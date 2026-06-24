@@ -282,6 +282,8 @@ export interface AdminUser {
   status: AccountStatus;
   model: string | null;
   credits: CreditBalance;
+  /** True once the user has bought credits beyond the starter grant (free vs paid). */
+  hasToppedUp: boolean;
   toolsetCount: number;
   conversationCount: number;
   createdAt: string;
@@ -362,6 +364,8 @@ export interface AdminOverview {
   creditsSold: number;
   creditsRemaining: number;
   creditsUsed: number;
+  /** Users still on the starter grant (never bought credits) — the free-tier CTA target. */
+  neverToppedUp: number;
   chart: UsagePoint[];
   alerts: AdminUser[];
   activity: AdminActivityEvent[];

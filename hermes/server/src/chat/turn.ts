@@ -1,11 +1,18 @@
 import crypto from 'node:crypto';
-import type { ChatImageInput, HermesContentPart, MessageContentPart } from '@hermes/shared';
+import type {
+  ChatImageInput,
+  HermesContentPart,
+  MessageContentPart,
+  NormalizedUsage,
+} from '@hermes/shared';
 import { ContentPartType } from '@hermes/shared';
 import type { GatewayPool, PooledGateway } from '../hermes/pool';
 import { prisma } from '../db';
+import { config } from '../config';
 import { notFound, unauthorized } from '../errors';
 import { gatewayPool } from '../hermes/pool';
 import { toJsonInput } from '../json';
+import { creditsForUsage, tokensUsed } from '../billing/meter';
 
 /** Shared turn helpers used by both chat engines (Sessions stream + agentic Runs). */
 
@@ -136,7 +143,11 @@ export async function buildConversationHistory(
     .map((m) => ({ role: m.role, content: m.text }));
 }
 
-/** Persist the assembled assistant message and bump the conversation's updatedAt. */
+/**
+ * Persist the assembled assistant message and bump the conversation's updatedAt. When the turn
+ * succeeded and carries usage, also meter it: stamp the per-turn token/credit columns on the message
+ * and decrement the user's credit balance — atomically, so usage history and balances never drift.
+ */
 export async function persistAssistantMessage(params: {
   ctx: TurnContext;
   assistantId: string;
@@ -146,24 +157,48 @@ export async function persistAssistantMessage(params: {
   content: MessageContentPart[];
   finishReason: string;
   errored: boolean;
+  usage?: NormalizedUsage;
 }) {
-  const { ctx, assistantId, userMessageId, sessionId, text, content, finishReason, errored } = params;
-  const assistantMessage = await prisma.message.create({
-    data: {
-      id: assistantId,
-      conversationId: ctx.conversation.id,
-      userId: ctx.user.id,
-      role: 'assistant',
-      text,
-      content: toJsonInput(content),
-      parentMessageId: userMessageId,
-      finishReason,
-      error: errored,
-    },
-  });
-  await prisma.conversation.update({
-    where: { id: ctx.conversation.id },
-    data: { hermesSessionId: sessionId },
-  });
+  const { ctx, assistantId, userMessageId, sessionId, text, content, finishReason, errored, usage } =
+    params;
+
+  const meter =
+    !errored && usage && tokensUsed(usage) > 0
+      ? {
+          inputTokens: usage.inputTokens ?? null,
+          outputTokens: usage.outputTokens ?? null,
+          totalTokens: usage.totalTokens ?? tokensUsed(usage),
+          creditsCharged: creditsForUsage(usage, config.credits.perThousandTokens),
+        }
+      : null;
+
+  const [assistantMessage] = await prisma.$transaction([
+    prisma.message.create({
+      data: {
+        id: assistantId,
+        conversationId: ctx.conversation.id,
+        userId: ctx.user.id,
+        role: 'assistant',
+        text,
+        content: toJsonInput(content),
+        parentMessageId: userMessageId,
+        finishReason,
+        error: errored,
+        ...(meter ?? {}),
+      },
+    }),
+    prisma.conversation.update({
+      where: { id: ctx.conversation.id },
+      data: { hermesSessionId: sessionId },
+    }),
+    ...(meter && meter.creditsCharged > 0
+      ? [
+          prisma.user.update({
+            where: { id: ctx.user.id },
+            data: { creditsUsed: { increment: meter.creditsCharged } },
+          }),
+        ]
+      : []),
+  ]);
   return assistantMessage;
 }

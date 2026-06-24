@@ -44,6 +44,7 @@ function toAdminUser(user: DbUser, conversationCount: number): AdminUser {
     status: user.status as AdminUser['status'],
     model: user.model ?? config.defaultModel,
     credits: toCreditBalance(user),
+    hasToppedUp: user.hasToppedUp,
     toolsetCount: user.enabledToolsets.length,
     conversationCount,
     createdAt: user.createdAt.toISOString(),
@@ -138,6 +139,7 @@ adminRouter.get(
       creditsSold: users.reduce((sum, u) => sum + u.creditsPurchased, 0),
       creditsRemaining: users.reduce((sum, u) => sum + Math.max(0, u.creditsPurchased - u.creditsUsed), 0),
       creditsUsed: users.reduce((sum, u) => sum + u.creditsUsed, 0),
+      neverToppedUp: users.filter((u) => !u.hasToppedUp).length,
       chart,
       alerts,
       activity,
@@ -276,7 +278,7 @@ adminRouter.post(
     }
     const user = await prisma.user.update({
       where: { id },
-      data: { creditsPurchased: { increment: amount }, lastTopupAt: new Date() },
+      data: { creditsPurchased: { increment: amount }, lastTopupAt: new Date(), hasToppedUp: true },
     });
     const count = await prisma.conversation.count({ where: { userId: id } });
     res.json(toAdminUser(user, count));
@@ -298,12 +300,12 @@ adminRouter.post(
     if (existing) {
       throw badRequest('Email already registered', 'email_taken');
     }
+    // A starter/invite grant is not a purchase — leave hasToppedUp false so the CTA still targets them.
     const user = await prisma.user.create({
       data: {
         email,
         name: input.name ?? null,
         ...provisionDefaults(input.startingCredits),
-        ...(input.startingCredits !== undefined ? { lastTopupAt: new Date() } : {}),
       },
     });
     res.status(201).json(toAdminUser(user, 0));

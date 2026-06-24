@@ -25,6 +25,8 @@ const envSchema = z.object({
   USER_TURNS_PER_MINUTE: z.coerce.number().int().positive().default(20),
   DEDICATED_MAX_CONCURRENT_TURNS: z.coerce.number().int().positive().default(10),
   DEDICATED_TURNS_PER_MINUTE: z.coerce.number().int().positive().default(120),
+  // Credits charged per 1k tokens of metered usage (tunable without code changes).
+  CREDITS_PER_1K_TOKENS: z.coerce.number().positive().default(1),
 });
 
 function parseGateways(raw: string): GatewayConfig[] {
@@ -75,6 +77,9 @@ function loadConfig() {
         maxConcurrentTurns: env.DEDICATED_MAX_CONCURRENT_TURNS,
         turnsPerMinute: env.DEDICATED_TURNS_PER_MINUTE,
       },
+    },
+    credits: {
+      perThousandTokens: env.CREDITS_PER_1K_TOKENS,
     },
   } as const;
 }

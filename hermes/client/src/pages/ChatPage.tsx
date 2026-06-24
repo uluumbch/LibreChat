@@ -20,7 +20,13 @@ interface InitialState {
 }
 
 /** Transient/expected conditions rendered calmly (amber) rather than as hard failures (red). */
-const SOFT_ERROR_CODES = new Set(['hermes_busy', 'rate_limited', 'too_many_requests', 'connection']);
+const SOFT_ERROR_CODES = new Set([
+  'hermes_busy',
+  'rate_limited',
+  'too_many_requests',
+  'connection',
+  'insufficient_credits',
+]);
 
 const SUGGESTIONS = [
   'Summarize the most recent changes in this project.',
@@ -105,6 +111,8 @@ export default function ChatPage(): JSX.Element {
   }, [convId, chat.messages]);
 
   const activeModel = user?.hermesProfile?.model ?? 'default';
+  const remaining = user?.credits?.remaining ?? null;
+  const outOfCredits = remaining !== null && remaining <= 0;
 
   return (
     <div className="flex h-full bg-white text-ink">
@@ -122,6 +130,14 @@ export default function ChatPage(): JSX.Element {
           </span>
           <div className="flex flex-none items-center gap-3.5">
             {convId !== null && !chat.isLoadingHistory && <UsageBar conversationId={convId} />}
+            {remaining !== null && (
+              <span
+                className={`font-mono text-[11.5px] ${outOfCredits ? 'text-amber-600' : 'text-ink-faint'}`}
+                title="Credits remaining"
+              >
+                {remaining.toLocaleString()} credits
+              </span>
+            )}
             <button
               type="button"
               onClick={() => setSettingsOpen(true)}
@@ -159,6 +175,16 @@ export default function ChatPage(): JSX.Element {
           <div className="px-6 pt-2">
             <div className="mx-auto max-w-[768px]">
               <ApprovalPrompt approval={chat.pendingApproval} onRespond={chat.respondApproval} />
+            </div>
+          </div>
+        )}
+        {outOfCredits && (
+          <div className="px-6 pt-2">
+            <div className="mx-auto flex max-w-[768px] items-center gap-2.5 rounded-[11px] border border-amber-500/30 bg-amber-500/[0.08] px-3.5 py-2.5 text-[13px] text-amber-800">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M3 17l4-9 5 6 5-9 4 12" />
+              </svg>
+              You're out of credits. Ask your workspace admin to top up to keep chatting.
             </div>
           </div>
         )}

@@ -139,6 +139,7 @@ export async function runChatTurnViaRuns(params: RunsChatTurnParams): Promise<vo
     content: accumulator.contentParts(),
     finishReason,
     errored,
+    usage: accumulator.usage,
   });
 
   if (!errored) {

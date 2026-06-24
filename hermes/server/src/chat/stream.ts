@@ -111,6 +111,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<void> {
     content: accumulator.contentParts(),
     finishReason,
     errored,
+    usage: accumulator.usage,
   });
 
   if (!errored) {

@@ -160,6 +160,9 @@ export function UsersTable({
                 <div style={{ minWidth: 0 }}>
                   <div
                     style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 7,
                       fontSize: 13.5,
                       fontWeight: 550,
                       color: '#27272a',
@@ -168,7 +171,27 @@ export function UsersTable({
                       textOverflow: 'ellipsis',
                     }}
                   >
-                    {u.name ?? u.email}
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {u.name ?? u.email}
+                    </span>
+                    {!u.hasToppedUp && (
+                      <span
+                        title="Never topped up — still on the starter grant"
+                        style={{
+                          flex: 'none',
+                          fontSize: 10,
+                          fontWeight: 600,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.03em',
+                          padding: '2px 6px',
+                          borderRadius: 5,
+                          color: '#71717a',
+                          background: '#f4f4f6',
+                        }}
+                      >
+                        Free
+                      </span>
+                    )}
                   </div>
                   <div
                     style={{

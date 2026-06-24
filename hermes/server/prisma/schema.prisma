@@ -23,6 +23,8 @@ model User {
   creditsPurchased Int @default(0) @map("credits_purchased")
   creditsUsed      Int @default(0) @map("credits_used")
   lastTopupAt      DateTime? @map("last_topup_at")
+  // True once the user has bought credits beyond the starter grant (free vs paid).
+  hasToppedUp      Boolean @default(false) @map("has_topped_up")
 
   // Service tier: "free" (shared pool) or "dedicated" (paid — higher limits + an optional
   // reserved gateway). The provider key is still app-level; see dedicatedGatewayId.
@@ -89,6 +91,12 @@ model Message {
   parentMessageId String? @map("parent_message_id")
   finishReason    String? @map("finish_reason")
   error           Boolean @default(false)
+
+  // Per-turn usage, metered onto the assistant message (null for user turns / un-metered rows).
+  inputTokens    Int? @map("input_tokens")
+  outputTokens   Int? @map("output_tokens")
+  totalTokens    Int? @map("total_tokens")
+  creditsCharged Int? @map("credits_charged")
 
   createdAt DateTime @default(now()) @map("created_at")
 
