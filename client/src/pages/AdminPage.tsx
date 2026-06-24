@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import type { AdminUser } from '@hermes/shared';
 import { useAuth } from '~/auth/AuthContext';
@@ -33,6 +33,17 @@ import {
 
 type View = 'overview' | 'users' | 'billing' | 'jobs';
 
+const VIEWS: readonly View[] = ['overview', 'users', 'billing', 'jobs'];
+
+function isView(value: string | undefined): value is View {
+  return value != null && (VIEWS as readonly string[]).includes(value);
+}
+
+/** Path for a section tab; overview is the canonical bare `/admin`. */
+function viewPath(view: View): string {
+  return view === 'overview' ? '/admin' : `/admin/${view}`;
+}
+
 const TITLES: Record<View, [string, string]> = {
   overview: ['Overview', 'Workspace usage and agent activity at a glance'],
   users: ['Users', 'Manage agent profiles and credits'],
@@ -49,7 +60,10 @@ const NAV: Array<{ key: View; label: string; icon: ReactNode }> = [
 
 export default function AdminPage(): JSX.Element {
   const { user } = useAuth();
-  const [view, setView] = useState<View>('overview');
+  const navigate = useNavigate();
+  const { section } = useParams();
+  const view: View = isView(section) ? section : 'overview';
+  const goTo = (next: View) => navigate(viewPath(next));
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<UserFilter>('all');
   const [selId, setSelId] = useState<string | null>(null);
@@ -107,10 +121,6 @@ export default function AdminPage(): JSX.Element {
   };
 
   const footerInitials = useMemo(() => user?.email ?? '', [user]);
-
-  if (user && user.role !== 'ADMIN') {
-    return <Navigate to="/" replace />;
-  }
 
   return (
     <div
@@ -177,7 +187,7 @@ export default function AdminPage(): JSX.Element {
               <button
                 key={item.key}
                 type="button"
-                onClick={() => setView(item.key)}
+                onClick={() => goTo(item.key)}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -300,7 +310,9 @@ export default function AdminPage(): JSX.Element {
                 value={search}
                 onChange={(e) => {
                   setSearch(e.target.value);
-                  setView('users');
+                  if (view !== 'users') {
+                    goTo('users');
+                  }
                 }}
                 placeholder="Search users…"
                 style={{
