@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { InviteUserRequest } from '@hermes/shared';
 import { Spinner } from '~/components/ui';
+import { useModels } from '~/data/queries';
 import { ACCENT, MONO } from './theme';
 import { ModalShell } from './ModalShell';
 
@@ -26,9 +27,14 @@ export function InviteModal({
   onClose: () => void;
   onSend: (input: InviteUserRequest) => void;
 }): JSX.Element {
+  const modelsQuery = useModels();
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [credits, setCredits] = useState('2000');
+  const [model, setModel] = useState('');
+  const [instructions, setInstructions] = useState('');
+
+  const modelOptions = modelsQuery.data?.items.map((m) => m.id) ?? [];
 
   const submit = () => {
     const trimmed = email.trim();
@@ -40,6 +46,8 @@ export function InviteModal({
       email: trimmed,
       name: name.trim() || undefined,
       startingCredits: Number.isFinite(startingCredits) ? startingCredits : undefined,
+      model: model || undefined,
+      instructions: instructions.trim() ? instructions.trim() : undefined,
     });
   };
 
@@ -79,9 +87,36 @@ export function InviteModal({
           onChange={(e) => setCredits(e.target.value)}
           style={{ ...inputStyle, fontFamily: MONO }}
         />
-        <p style={{ margin: '7px 0 0', fontSize: 11.5, color: '#a1a1aa' }}>
+        <p style={{ margin: '7px 0 14px', fontSize: 11.5, color: '#a1a1aa' }}>
           A free starter grant to get going. They top up to add more.
         </p>
+
+        <label style={{ display: 'block', fontSize: 12.5, fontWeight: 550, color: '#3f3f46', marginBottom: 6 }}>
+          Model <span style={{ color: '#a1a1aa', fontWeight: 400 }}>(optional)</span>
+        </label>
+        <select
+          value={model}
+          onChange={(e) => setModel(e.target.value)}
+          style={{ ...inputStyle, fontFamily: MONO, marginBottom: 14, cursor: 'pointer' }}
+        >
+          <option value="">Default model</option>
+          {modelOptions.map((id) => (
+            <option key={id} value={id}>
+              {id}
+            </option>
+          ))}
+        </select>
+
+        <label style={{ display: 'block', fontSize: 12.5, fontWeight: 550, color: '#3f3f46', marginBottom: 6 }}>
+          Persona &amp; instructions <span style={{ color: '#a1a1aa', fontWeight: 400 }}>(optional)</span>
+        </label>
+        <textarea
+          value={instructions}
+          onChange={(e) => setInstructions(e.target.value)}
+          placeholder="System instructions for this user's agent…"
+          style={{ ...inputStyle, height: 72, resize: 'none', lineHeight: 1.5, fontFamily: 'inherit' }}
+        />
+
         {error && <p style={{ margin: '10px 0 0', fontSize: 12, color: '#dc2626' }}>{error}</p>}
       </div>
       <div style={{ padding: '0 24px 22px', display: 'flex', gap: 9, justifyContent: 'flex-end' }}>

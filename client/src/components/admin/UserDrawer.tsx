@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { AdminUser, AdminUserToolset } from '@hermes/shared';
+
+interface SkillToggle {
+  name: string;
+  description?: string;
+  enabled: boolean;
+}
 import { Spinner } from '~/components/ui';
 import { useAdminUser, useModels, useUpdateAdminUser } from '~/data/queries';
 import { ACCENT, MONO, creditColor, creditPct, fmt, jobBadgeStyle } from './theme';
 import { Avatar } from './primitives';
 import { ChevronDown, CloseIcon, ClockIcon, ShieldIcon } from './icons';
-
-const SKILL_CHIPS = 12;
 
 function Toggle({ on, onClick }: { on: boolean; onClick: () => void }): JSX.Element {
   return (
@@ -64,12 +68,21 @@ export function UserDrawer({
   const [model, setModel] = useState('');
   const [instructions, setInstructions] = useState('');
   const [toolsets, setToolsets] = useState<AdminUserToolset[]>([]);
+  const [skills, setSkills] = useState<SkillToggle[]>([]);
 
   useEffect(() => {
     if (detail) {
       setModel(detail.model ?? '');
       setInstructions(detail.instructions ?? '');
       setToolsets(detail.toolsets);
+      const enabled = new Set(detail.enabledSkills);
+      setSkills(
+        detail.skills.map((s) => ({
+          name: s.name,
+          description: s.description,
+          enabled: enabled.has(s.name),
+        })),
+      );
     }
   }, [detail]);
 
@@ -82,6 +95,7 @@ export function UserDrawer({
   }, [modelsQuery.data, model]);
 
   const enabledCount = toolsets.filter((t) => t.enabled).length;
+  const enabledSkillCount = skills.filter((s) => s.enabled).length;
 
   const save = async () => {
     await updateUser.mutateAsync({
@@ -90,6 +104,7 @@ export function UserDrawer({
         model: model || undefined,
         instructions: instructions.length > 0 ? instructions : null,
         enabledToolsets: toolsets.filter((t) => t.enabled).map((t) => t.name),
+        enabledSkills: skills.filter((s) => s.enabled).map((s) => s.name),
       },
     });
     onFlash('Agent profile saved');
@@ -320,6 +335,11 @@ export function UserDrawer({
                 </h3>
               </div>
 
+              <p style={{ margin: '-4px 0 18px', fontSize: 11.5, color: '#a1a1aa', lineHeight: 1.5 }}>
+                Model &amp; persona apply immediately. MCP servers &amp; skills are saved now and take
+                effect once gateway enforcement ships.
+              </p>
+
               <div style={{ marginBottom: 20 }}>
                 <label style={{ display: 'block', fontSize: 12.5, fontWeight: 550, color: '#3f3f46', marginBottom: 7 }}>
                   Model
@@ -431,46 +451,71 @@ export function UserDrawer({
                 </div>
               </div>
 
-              {detail.skills.length > 0 && (
+              {skills.length > 0 && (
                 <div style={{ marginBottom: 20 }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 }}>
-                    <label style={{ fontSize: 12.5, fontWeight: 550, color: '#3f3f46' }}>Installed skills</label>
-                    <span style={{ fontSize: 11.5, color: '#a1a1aa' }}>{detail.skills.length} available</span>
+                    <label style={{ fontSize: 12.5, fontWeight: 550, color: '#3f3f46' }}>Skills</label>
+                    <span style={{ fontSize: 11.5, color: '#a1a1aa' }}>
+                      {enabledSkillCount} of {skills.length} enabled
+                    </span>
                   </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
-                    {detail.skills.slice(0, SKILL_CHIPS).map((skill) => (
-                      <span
+                  <div style={{ border: '1px solid #ebebef', borderRadius: 12, overflow: 'hidden' }}>
+                    {skills.map((skill, i) => (
+                      <div
                         key={skill.name}
                         style={{
-                          display: 'inline-flex',
+                          display: 'flex',
                           alignItems: 'center',
-                          padding: '5px 11px',
-                          borderRadius: 8,
-                          fontFamily: MONO,
-                          fontSize: 11.5,
-                          color: '#4f46e5',
-                          background: 'rgba(91,84,232,0.08)',
-                          border: '1px solid rgba(91,84,232,0.15)',
+                          gap: 11,
+                          padding: '11px 13px',
+                          borderBottom: i === skills.length - 1 ? 'none' : '1px solid #f4f4f6',
                         }}
                       >
-                        {skill.name}
-                      </span>
+                        <span
+                          style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: 7,
+                            background: 'rgba(91,84,232,0.1)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontFamily: MONO,
+                            fontSize: 10.5,
+                            fontWeight: 600,
+                            color: ACCENT,
+                            flex: 'none',
+                          }}
+                        >
+                          {skill.name.slice(0, 2).toUpperCase()}
+                        </span>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontSize: 13, fontWeight: 500, color: '#27272a' }}>{skill.name}</div>
+                          {skill.description && (
+                            <div
+                              style={{
+                                fontFamily: MONO,
+                                fontSize: 11,
+                                color: '#a1a1aa',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                              }}
+                            >
+                              {skill.description}
+                            </div>
+                          )}
+                        </div>
+                        <Toggle
+                          on={skill.enabled}
+                          onClick={() =>
+                            setSkills((prev) =>
+                              prev.map((s) => (s.name === skill.name ? { ...s, enabled: !s.enabled } : s)),
+                            )
+                          }
+                        />
+                      </div>
                     ))}
-                    {detail.skills.length > SKILL_CHIPS && (
-                      <span
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          padding: '5px 11px',
-                          borderRadius: 8,
-                          fontSize: 12,
-                          color: '#a1a1aa',
-                          border: '1px dashed #d4d4d8',
-                        }}
-                      >
-                        +{detail.skills.length - SKILL_CHIPS} more
-                      </span>
-                    )}
                   </div>
                 </div>
               )}

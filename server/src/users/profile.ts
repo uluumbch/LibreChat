@@ -18,6 +18,7 @@ export function toHermesProfile(user: DbUser): HermesProfile {
     instructions: user.instructions ?? null,
     memoryEnabled: user.memoryEnabled,
     enabledToolsets: user.enabledToolsets,
+    enabledSkills: user.enabledSkills,
   };
 }
 

@@ -36,6 +36,7 @@ model User {
   instructions    String?
   memoryEnabled   Boolean  @default(true) @map("memory_enabled")
   enabledToolsets String[] @default([]) @map("enabled_toolsets")
+  enabledSkills   String[] @default([]) @map("enabled_skills")
 
   refreshTokens RefreshToken[]
   conversations Conversation[]

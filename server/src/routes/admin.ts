@@ -226,6 +226,7 @@ adminRouter.get(
       memoryEnabled: user.memoryEnabled,
       toolsets,
       skills,
+      enabledSkills: user.enabledSkills,
       jobs,
       usage,
     };
@@ -238,6 +239,7 @@ const updateBody = z.object({
   instructions: z.string().max(8000).nullable().optional(),
   status: z.enum(['ACTIVE', 'SUSPENDED']).optional(),
   enabledToolsets: z.array(z.string().max(80)).max(64).optional(),
+  enabledSkills: z.array(z.string().max(80)).max(64).optional(),
 });
 
 adminRouter.patch(
@@ -259,6 +261,7 @@ adminRouter.patch(
         ...(input.instructions !== undefined ? { instructions: input.instructions } : {}),
         ...(input.status !== undefined ? { status: input.status } : {}),
         ...(input.enabledToolsets !== undefined ? { enabledToolsets: input.enabledToolsets } : {}),
+        ...(input.enabledSkills !== undefined ? { enabledSkills: input.enabledSkills } : {}),
       },
     });
     const count = await prisma.conversation.count({ where: { userId: id } });
@@ -290,12 +293,20 @@ const inviteBody = z.object({
   email: z.string().email(),
   name: z.string().max(120).optional(),
   startingCredits: z.number().int().min(0).max(1_000_000).optional(),
+  // Optional agent-profile config applied at creation; omitted fields fall back to provision defaults.
+  model: z.string().max(120).optional(),
+  instructions: z.string().max(8000).nullable().optional(),
+  enabledToolsets: z.array(z.string().max(80)).max(64).optional(),
+  enabledSkills: z.array(z.string().max(80)).max(64).optional(),
 });
 
 adminRouter.post(
   '/invite',
   asyncHandler(async (req, res) => {
     const input = inviteBody.parse(req.body);
+    if (input.model && !gatewayPool.hasModel(input.model)) {
+      throw badRequest(`Unknown model: ${input.model}`, 'unknown_model');
+    }
     const email = input.email.toLowerCase();
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
@@ -307,6 +318,10 @@ adminRouter.post(
         email,
         name: input.name ?? null,
         ...provisionDefaults(input.startingCredits),
+        ...(input.model !== undefined ? { model: input.model } : {}),
+        ...(input.instructions !== undefined ? { instructions: input.instructions } : {}),
+        ...(input.enabledToolsets !== undefined ? { enabledToolsets: input.enabledToolsets } : {}),
+        ...(input.enabledSkills !== undefined ? { enabledSkills: input.enabledSkills } : {}),
       },
     });
     res.status(201).json(toAdminUser(user, 0));

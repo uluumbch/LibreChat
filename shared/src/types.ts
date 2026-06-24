@@ -65,6 +65,7 @@ export interface HermesProfile {
   instructions: string | null;
   memoryEnabled: boolean;
   enabledToolsets: string[];
+  enabledSkills: string[];
 }
 
 /** Admin-managed credit balance. `remaining = purchased - used`. */
@@ -310,7 +311,10 @@ export interface AdminUserDetail extends AdminUser {
   instructions: string | null;
   memoryEnabled: boolean;
   toolsets: AdminUserToolset[];
+  /** The skill catalog available on the gateway. */
   skills: SkillOption[];
+  /** Names of skills enabled for this user (subset of `skills`). */
+  enabledSkills: string[];
   jobs: JobSummary[];
   usage: UserUsageSummary;
 }
@@ -320,6 +324,7 @@ export interface UpdateUserRequest {
   instructions?: string | null;
   status?: AccountStatus;
   enabledToolsets?: string[];
+  enabledSkills?: string[];
 }
 
 export interface TopupRequest {
@@ -332,6 +337,11 @@ export interface InviteUserRequest {
   name?: string;
   /** Starter credit grant added to the new user's purchased balance. */
   startingCredits?: number;
+  /** Optional agent-profile config applied at creation (falls back to defaults when omitted). */
+  model?: string;
+  instructions?: string | null;
+  enabledToolsets?: string[];
+  enabledSkills?: string[];
 }
 
 /** A scheduled job paired with the user who owns it (admin-wide view). */

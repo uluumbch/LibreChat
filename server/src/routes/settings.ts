@@ -11,6 +11,7 @@ const updateBody = z.object({
   instructions: z.string().max(8000).nullable().optional(),
   memoryEnabled: z.boolean().optional(),
   enabledToolsets: z.array(z.string().max(80)).max(64).optional(),
+  enabledSkills: z.array(z.string().max(80)).max(64).optional(),
 });
 
 export const profileRouter: Router = Router();
@@ -41,6 +42,7 @@ profileRouter.patch(
         ...(input.instructions !== undefined ? { instructions: input.instructions } : {}),
         ...(input.memoryEnabled !== undefined ? { memoryEnabled: input.memoryEnabled } : {}),
         ...(input.enabledToolsets !== undefined ? { enabledToolsets: input.enabledToolsets } : {}),
+        ...(input.enabledSkills !== undefined ? { enabledSkills: input.enabledSkills } : {}),
       },
     });
     res.json(toApiUser(user));

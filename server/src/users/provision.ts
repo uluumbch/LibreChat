@@ -13,6 +13,7 @@ export function provisionDefaults(startingCredits = STARTER_CREDITS): {
   instructions: string | null;
   memoryEnabled: boolean;
   enabledToolsets: string[];
+  enabledSkills: string[];
   creditsPurchased: number;
 } {
   return {
@@ -20,6 +21,7 @@ export function provisionDefaults(startingCredits = STARTER_CREDITS): {
     instructions: null,
     memoryEnabled: true,
     enabledToolsets: [],
+    enabledSkills: [],
     creditsPurchased: startingCredits,
   };
 }
