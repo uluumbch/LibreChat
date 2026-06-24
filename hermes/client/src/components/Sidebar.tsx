@@ -189,6 +189,14 @@ export function Sidebar({
 
       <div className="border-t border-white/10 p-3">
         <div className="mb-2 truncate text-xs text-zinc-400">{user?.email}</div>
+        {user?.role === 'ADMIN' && (
+          <Link
+            to="/admin"
+            className="mb-2 flex items-center justify-center rounded-lg py-2 text-sm font-medium text-indigo-300 ring-1 ring-indigo-500/30 transition hover:bg-indigo-500/10"
+          >
+            Admin panel
+          </Link>
+        )}
         <div className="flex gap-2">
           <Button variant="ghost" className="flex-1 ring-1 ring-white/10" onClick={onOpenSettings}>
             Settings

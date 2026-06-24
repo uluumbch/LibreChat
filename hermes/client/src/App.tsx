@@ -4,6 +4,7 @@ import { Spinner } from '~/components/ui';
 import LoginPage from '~/pages/LoginPage';
 import RegisterPage from '~/pages/RegisterPage';
 import ChatPage from '~/pages/ChatPage';
+import AdminPage from '~/pages/AdminPage';
 
 export default function App(): JSX.Element {
   const { status } = useAuth();
@@ -26,6 +27,7 @@ export default function App(): JSX.Element {
         path="/c/:conversationId"
         element={authed ? <ChatPage /> : <Navigate to="/login" replace />}
       />
+      <Route path="/admin" element={authed ? <AdminPage /> : <Navigate to="/login" replace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

@@ -67,12 +67,24 @@ export interface HermesProfile {
   enabledToolsets: string[];
 }
 
+/** Admin-managed credit balance. `remaining = purchased - used`. */
+export interface CreditBalance {
+  purchased: number;
+  used: number;
+  remaining: number;
+  lastTopupAt: string | null;
+}
+
+export type AccountStatus = 'ACTIVE' | 'SUSPENDED';
+
 export interface User {
   id: string;
   email: string;
   name: string | null;
   role: string;
+  status: AccountStatus;
   emailVerified: boolean;
+  credits: CreditBalance;
   hermesProfile: HermesProfile;
   createdAt: string;
   updatedAt: string;
@@ -252,4 +264,100 @@ export interface SkillOption {
 
 export interface SkillsResponse {
   items: SkillOption[];
+}
+
+/* ------------------------------ Admin DTOs ------------------------------ */
+
+/** A workspace member as shown in the admin Users/Credits tables. */
+export interface AdminUser {
+  id: string;
+  email: string;
+  name: string | null;
+  role: string;
+  status: AccountStatus;
+  model: string | null;
+  credits: CreditBalance;
+  toolsetCount: number;
+  conversationCount: number;
+  createdAt: string;
+}
+
+export interface AdminUsersResponse {
+  items: AdminUser[];
+}
+
+/** A toolset (MCP-style connector) with this user's enabled flag, for the agent-profile drawer. */
+export interface AdminUserToolset {
+  name: string;
+  label: string;
+  description?: string;
+  enabled: boolean;
+}
+
+/** Full agent profile for one user, backing the admin drawer. */
+export interface AdminUserDetail extends AdminUser {
+  instructions: string | null;
+  memoryEnabled: boolean;
+  toolsets: AdminUserToolset[];
+  skills: SkillOption[];
+  jobs: JobSummary[];
+}
+
+export interface UpdateUserRequest {
+  model?: string;
+  instructions?: string | null;
+  status?: AccountStatus;
+  enabledToolsets?: string[];
+}
+
+export interface TopupRequest {
+  /** Credits to add to the user's purchased balance. */
+  amount: number;
+}
+
+export interface InviteUserRequest {
+  email: string;
+  name?: string;
+  /** Starter credit grant added to the new user's purchased balance. */
+  startingCredits?: number;
+}
+
+/** A scheduled job paired with the user who owns it (admin-wide view). */
+export interface AdminJob extends JobSummary {
+  ownerId: string;
+  ownerName: string;
+  ownerEmail: string;
+}
+
+export interface AdminJobsResponse {
+  items: AdminJob[];
+}
+
+/** One bucket of the admin overview consumption chart. */
+export interface UsagePoint {
+  /** Day label, e.g. "Jun 12". */
+  label: string;
+  /** Message volume in the bucket. */
+  count: number;
+}
+
+export interface AdminActivityEvent {
+  id: string;
+  userName: string;
+  userId: string;
+  action: string;
+  conversationId: string;
+  createdAt: string;
+}
+
+export interface AdminOverview {
+  totalUsers: number;
+  activeUsers: number;
+  needsAttention: number;
+  creditsSold: number;
+  creditsRemaining: number;
+  creditsUsed: number;
+  chart: UsagePoint[];
+  alerts: AdminUser[];
+  activity: AdminActivityEvent[];
 }

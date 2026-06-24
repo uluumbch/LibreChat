@@ -1,20 +1,26 @@
 import { config } from '../config';
 
+/** Free credit grant a new account starts with. */
+export const STARTER_CREDITS = 2000;
+
 /**
- * Defaults written into a new user's row at signup — the per-user "profile" (preferences).
- * No Hermes OS profile is created; isolation happens at the session layer.
+ * Defaults written into a new user's row at signup — the per-user "profile" (preferences)
+ * plus the starter credit grant. No Hermes OS profile is created; isolation happens at the
+ * session layer.
  */
-export function provisionDefaults(): {
+export function provisionDefaults(startingCredits = STARTER_CREDITS): {
   model: string;
   instructions: string | null;
   memoryEnabled: boolean;
   enabledToolsets: string[];
+  creditsPurchased: number;
 } {
   return {
     model: config.defaultModel,
     instructions: null,
     memoryEnabled: true,
     enabledToolsets: [],
+    creditsPurchased: startingCredits,
   };
 }
 

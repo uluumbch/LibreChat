@@ -1,0 +1,577 @@
+import { useEffect, useMemo, useState } from 'react';
+import type { AdminUser, AdminUserToolset } from '@hermes/shared';
+import { Spinner } from '~/components/ui';
+import { useAdminUser, useModels, useUpdateAdminUser } from '~/data/queries';
+import { ACCENT, MONO, creditColor, creditPct, fmt, jobBadgeStyle } from './theme';
+import { Avatar } from './primitives';
+import { ChevronDown, CloseIcon, ClockIcon, ShieldIcon } from './icons';
+
+const SKILL_CHIPS = 12;
+
+function Toggle({ on, onClick }: { on: boolean; onClick: () => void }): JSX.Element {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      onClick={onClick}
+      style={{
+        width: 38,
+        height: 22,
+        borderRadius: 999,
+        cursor: 'pointer',
+        position: 'relative',
+        transition: 'background .2s',
+        flex: 'none',
+        border: 'none',
+        padding: 0,
+        background: on ? ACCENT : '#d4d4d8',
+      }}
+    >
+      <span
+        style={{
+          position: 'absolute',
+          top: 2.5,
+          left: on ? 18.5 : 2.5,
+          width: 17,
+          height: 17,
+          borderRadius: '50%',
+          background: '#fff',
+          transition: 'left .2s',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
+        }}
+      />
+    </button>
+  );
+}
+
+export function UserDrawer({
+  userId,
+  onClose,
+  onTopup,
+  onFlash,
+}: {
+  userId: string;
+  onClose: () => void;
+  onTopup: (user: AdminUser) => void;
+  onFlash: (message: string) => void;
+}): JSX.Element {
+  const detailQuery = useAdminUser(userId);
+  const modelsQuery = useModels();
+  const updateUser = useUpdateAdminUser();
+  const detail = detailQuery.data;
+
+  const [model, setModel] = useState('');
+  const [instructions, setInstructions] = useState('');
+  const [toolsets, setToolsets] = useState<AdminUserToolset[]>([]);
+
+  useEffect(() => {
+    if (detail) {
+      setModel(detail.model ?? '');
+      setInstructions(detail.instructions ?? '');
+      setToolsets(detail.toolsets);
+    }
+  }, [detail]);
+
+  const modelOptions = useMemo(() => {
+    const ids = new Set(modelsQuery.data?.items.map((m) => m.id) ?? []);
+    if (model) {
+      ids.add(model);
+    }
+    return [...ids];
+  }, [modelsQuery.data, model]);
+
+  const enabledCount = toolsets.filter((t) => t.enabled).length;
+
+  const save = async () => {
+    await updateUser.mutateAsync({
+      id: userId,
+      body: {
+        model: model || undefined,
+        instructions: instructions.length > 0 ? instructions : null,
+        enabledToolsets: toolsets.filter((t) => t.enabled).map((t) => t.name),
+      },
+    });
+    onFlash('Agent profile saved');
+  };
+
+  const toggleSuspend = async () => {
+    if (!detail) {
+      return;
+    }
+    const next = detail.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
+    await updateUser.mutateAsync({ id: userId, body: { status: next } });
+    onFlash(next === 'SUSPENDED' ? 'User suspended' : 'User reactivated');
+  };
+
+  return (
+    <>
+      <div
+        role="presentation"
+        onClick={onClose}
+        style={{ position: 'fixed', inset: 0, background: 'rgba(24,24,27,0.35)', backdropFilter: 'blur(2px)', zIndex: 50 }}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        style={{
+          position: 'fixed',
+          top: 0,
+          right: 0,
+          bottom: 0,
+          width: 560,
+          maxWidth: '94vw',
+          background: '#fff',
+          borderLeft: '1px solid #ebebef',
+          boxShadow: '-20px 0 60px rgba(0,0,0,0.12)',
+          zIndex: 51,
+          overflowY: 'auto',
+          color: '#18181b',
+        }}
+      >
+        {!detail && (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 60, color: '#a1a1aa' }}>
+            <Spinner size={22} />
+          </div>
+        )}
+
+        {detail && (
+          <>
+            <div
+              style={{
+                padding: '22px 24px',
+                borderBottom: '1px solid #ebebef',
+                position: 'sticky',
+                top: 0,
+                background: '#fff',
+                zIndex: 2,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 13, minWidth: 0 }}>
+                  <Avatar seed={detail.id} name={detail.name} email={detail.email} size={46} />
+                  <div style={{ minWidth: 0 }}>
+                    <h2
+                      style={{
+                        margin: 0,
+                        fontSize: 18,
+                        fontWeight: 600,
+                        letterSpacing: '-0.015em',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {detail.name ?? detail.email}
+                    </h2>
+                    <div style={{ fontSize: 12.5, color: '#a1a1aa', marginTop: 2 }}>
+                      {detail.email} · {detail.conversationCount} conversations
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  aria-label="Close"
+                  style={{
+                    width: 30,
+                    height: 30,
+                    borderRadius: 8,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#a1a1aa',
+                    cursor: 'pointer',
+                    flex: 'none',
+                    border: 'none',
+                    background: 'transparent',
+                  }}
+                >
+                  <CloseIcon />
+                </button>
+              </div>
+            </div>
+
+            <div style={{ padding: '20px 24px 40px' }}>
+              <div
+                style={{
+                  background: 'linear-gradient(180deg,rgba(91,84,232,0.06),rgba(91,84,232,0.02))',
+                  border: '1px solid rgba(91,84,232,0.18)',
+                  borderRadius: 14,
+                  padding: '17px 18px',
+                  marginBottom: 22,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 13 }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: '#71717a', fontWeight: 500, marginBottom: 4 }}>
+                      Credit balance
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 7 }}>
+                      <span
+                        style={{
+                          fontSize: 27,
+                          fontWeight: 650,
+                          letterSpacing: '-0.02em',
+                          fontFamily: MONO,
+                          color: creditColor(detail.credits.remaining, detail.credits.purchased),
+                        }}
+                      >
+                        {detail.credits.remaining.toLocaleString()}
+                      </span>
+                      <span style={{ fontSize: 13, color: '#a1a1aa' }}>
+                        of {fmt(detail.credits.purchased)} purchased
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onTopup(detail)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 7,
+                      background: ACCENT,
+                      border: 'none',
+                      borderRadius: 9,
+                      padding: '9px 15px',
+                      color: '#fff',
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      boxShadow: '0 3px 10px rgba(91,84,232,0.28)',
+                    }}
+                  >
+                    <span style={{ fontSize: 15, lineHeight: 1, marginTop: -1 }}>+</span> Add credit
+                  </button>
+                </div>
+                <div style={{ height: 7, borderRadius: 4, background: 'rgba(0,0,0,0.06)', overflow: 'hidden' }}>
+                  <div
+                    style={{
+                      height: '100%',
+                      width: `${creditPct(detail.credits)}%`,
+                      background: creditColor(detail.credits.remaining, detail.credits.purchased),
+                      borderRadius: 4,
+                    }}
+                  />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 9, fontSize: 11.5, color: '#a1a1aa' }}>
+                  <span>Used {detail.credits.used.toLocaleString()} total</span>
+                  <span>
+                    Last top-up{' '}
+                    {detail.credits.lastTopupAt
+                      ? new Date(detail.credits.lastTopupAt).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                        })
+                      : '—'}
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, color: ACCENT }}>
+                <ShieldIcon size={15} />
+                <h3
+                  style={{
+                    margin: 0,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                    color: '#52525b',
+                  }}
+                >
+                  Agent profile
+                </h3>
+              </div>
+
+              <div style={{ marginBottom: 20 }}>
+                <label style={{ display: 'block', fontSize: 12.5, fontWeight: 550, color: '#3f3f46', marginBottom: 7 }}>
+                  Model
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <select
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    style={{
+                      width: '100%',
+                      appearance: 'none',
+                      background: '#fff',
+                      border: '1px solid #e2e2e7',
+                      borderRadius: 10,
+                      padding: '10px 12px',
+                      color: '#18181b',
+                      fontSize: 13.5,
+                      fontFamily: MONO,
+                      outline: 'none',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {modelOptions.map((id) => (
+                      <option key={id} value={id}>
+                        {id}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown
+                    style={{
+                      position: 'absolute',
+                      right: 12,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      pointerEvents: 'none',
+                      color: '#a1a1aa',
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 }}>
+                  <label style={{ fontSize: 12.5, fontWeight: 550, color: '#3f3f46' }}>MCP servers</label>
+                  <span style={{ fontSize: 11.5, color: '#a1a1aa' }}>
+                    {enabledCount} of {toolsets.length} enabled
+                  </span>
+                </div>
+                <div style={{ border: '1px solid #ebebef', borderRadius: 12, overflow: 'hidden' }}>
+                  {toolsets.length === 0 && (
+                    <div style={{ padding: 14, fontSize: 12.5, color: '#a1a1aa' }}>No connectors available.</div>
+                  )}
+                  {toolsets.map((toolset, i) => (
+                    <div
+                      key={toolset.name}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 11,
+                        padding: '11px 13px',
+                        borderBottom: i === toolsets.length - 1 ? 'none' : '1px solid #f4f4f6',
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: 28,
+                          height: 28,
+                          borderRadius: 7,
+                          background: 'rgba(91,84,232,0.1)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontFamily: MONO,
+                          fontSize: 10.5,
+                          fontWeight: 600,
+                          color: ACCENT,
+                          flex: 'none',
+                        }}
+                      >
+                        {toolset.name.slice(0, 2).toUpperCase()}
+                      </span>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontSize: 13, fontWeight: 500, color: '#27272a' }}>{toolset.label}</div>
+                        {toolset.description && (
+                          <div
+                            style={{
+                              fontFamily: MONO,
+                              fontSize: 11,
+                              color: '#a1a1aa',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            }}
+                          >
+                            {toolset.description}
+                          </div>
+                        )}
+                      </div>
+                      <Toggle
+                        on={toolset.enabled}
+                        onClick={() =>
+                          setToolsets((prev) =>
+                            prev.map((t) => (t.name === toolset.name ? { ...t, enabled: !t.enabled } : t)),
+                          )
+                        }
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {detail.skills.length > 0 && (
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 }}>
+                    <label style={{ fontSize: 12.5, fontWeight: 550, color: '#3f3f46' }}>Installed skills</label>
+                    <span style={{ fontSize: 11.5, color: '#a1a1aa' }}>{detail.skills.length} available</span>
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+                    {detail.skills.slice(0, SKILL_CHIPS).map((skill) => (
+                      <span
+                        key={skill.name}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          padding: '5px 11px',
+                          borderRadius: 8,
+                          fontFamily: MONO,
+                          fontSize: 11.5,
+                          color: '#4f46e5',
+                          background: 'rgba(91,84,232,0.08)',
+                          border: '1px solid rgba(91,84,232,0.15)',
+                        }}
+                      >
+                        {skill.name}
+                      </span>
+                    ))}
+                    {detail.skills.length > SKILL_CHIPS && (
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          padding: '5px 11px',
+                          borderRadius: 8,
+                          fontSize: 12,
+                          color: '#a1a1aa',
+                          border: '1px dashed #d4d4d8',
+                        }}
+                      >
+                        +{detail.skills.length - SKILL_CHIPS} more
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {detail.jobs.length > 0 && (
+                <div style={{ marginBottom: 20 }}>
+                  <label style={{ display: 'block', fontSize: 12.5, fontWeight: 550, color: '#3f3f46', marginBottom: 9 }}>
+                    Scheduled jobs
+                  </label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {detail.jobs.map((job) => (
+                      <div
+                        key={job.id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 11,
+                          padding: '11px 13px',
+                          border: '1px solid #ebebef',
+                          borderRadius: 11,
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: 30,
+                            height: 30,
+                            borderRadius: 8,
+                            background: 'rgba(91,84,232,0.08)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: ACCENT,
+                            flex: 'none',
+                          }}
+                        >
+                          <ClockIcon size={14} />
+                        </span>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontSize: 12.5, fontWeight: 500, color: '#27272a' }}>{job.name}</div>
+                          <div style={{ fontFamily: MONO, fontSize: 11, color: '#a1a1aa' }}>
+                            {job.scheduleDisplay || '—'}
+                          </div>
+                        </div>
+                        <span style={jobBadgeStyle(job.enabled)}>{job.enabled ? 'on' : 'paused'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ marginBottom: 24 }}>
+                <label style={{ display: 'block', fontSize: 12.5, fontWeight: 550, color: '#3f3f46', marginBottom: 7 }}>
+                  Persona &amp; instructions
+                </label>
+                <textarea
+                  value={instructions}
+                  onChange={(e) => setInstructions(e.target.value)}
+                  placeholder="System instructions for this user's agent…"
+                  style={{
+                    width: '100%',
+                    height: 84,
+                    background: '#fafafb',
+                    border: '1px solid #e2e2e7',
+                    borderRadius: 10,
+                    padding: '11px 12px',
+                    color: '#3f3f46',
+                    fontSize: 13,
+                    lineHeight: 1.55,
+                    resize: 'none',
+                    outline: 'none',
+                    fontFamily: 'inherit',
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: 9, alignItems: 'center' }}>
+                <button
+                  type="button"
+                  disabled={updateUser.isPending}
+                  onClick={() => void save()}
+                  style={{
+                    background: ACCENT,
+                    border: 'none',
+                    borderRadius: 10,
+                    padding: '10px 18px',
+                    color: '#fff',
+                    fontSize: 13.5,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    boxShadow: '0 3px 10px rgba(91,84,232,0.28)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                  }}
+                >
+                  {updateUser.isPending ? <Spinner size={15} /> : 'Save profile'}
+                </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  style={{
+                    background: '#fff',
+                    border: '1px solid #e2e2e7',
+                    borderRadius: 10,
+                    padding: '10px 16px',
+                    color: '#52525b',
+                    fontSize: 13.5,
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={updateUser.isPending}
+                  onClick={() => void toggleSuspend()}
+                  style={{
+                    marginLeft: 'auto',
+                    background: '#fff',
+                    border: `1px solid ${detail.status === 'ACTIVE' ? 'rgba(220,38,38,0.25)' : 'rgba(16,185,129,0.3)'}`,
+                    borderRadius: 10,
+                    padding: '10px 16px',
+                    color: detail.status === 'ACTIVE' ? '#dc2626' : '#059669',
+                    fontSize: 13.5,
+                    fontWeight: 550,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {detail.status === 'ACTIVE' ? 'Suspend user' : 'Reactivate user'}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </>
+  );
+}

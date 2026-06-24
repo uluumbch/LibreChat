@@ -5,11 +5,18 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import type {
+  AdminJob,
+  AdminJobsResponse,
+  AdminOverview,
+  AdminUser,
+  AdminUserDetail,
+  AdminUsersResponse,
   Conversation,
   ConversationUsage,
   CreateConversationRequest,
   CreateJobRequest,
   CursorPage,
+  InviteUserRequest,
   JobsResponse,
   JobSummary,
   Message,
@@ -17,7 +24,9 @@ import type {
   SearchResponse,
   SkillsResponse,
   ToolsetsResponse,
+  TopupRequest,
   UpdateProfileRequest,
+  UpdateUserRequest,
   User,
 } from '@hermes/shared';
 import { apiRequest } from '~/api/client';
@@ -185,6 +194,88 @@ export function useForkConversation() {
       apiRequest<Conversation>('POST', `/api/conversations/${id}/fork`, {}),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.conversations });
+    },
+  });
+}
+
+/* ------------------------------- Admin ------------------------------- */
+
+export function useAdminOverview() {
+  return useQuery({
+    queryKey: queryKeys.adminOverview,
+    queryFn: () => apiRequest<AdminOverview>('GET', '/api/admin/overview'),
+    staleTime: 30 * 1000,
+  });
+}
+
+export function useAdminUsers(query: string) {
+  const term = query.trim();
+  return useQuery({
+    queryKey: queryKeys.adminUsers(term),
+    queryFn: () =>
+      apiRequest<AdminUsersResponse>(
+        'GET',
+        `/api/admin/users${term ? `?q=${encodeURIComponent(term)}` : ''}`,
+      ),
+    staleTime: 15 * 1000,
+  });
+}
+
+export function useAdminUser(id: string | null) {
+  return useQuery({
+    queryKey: id ? queryKeys.adminUser(id) : ['admin', 'user', 'none'],
+    enabled: id !== null,
+    queryFn: () => apiRequest<AdminUserDetail>('GET', `/api/admin/users/${id}`),
+  });
+}
+
+/** Invalidate every admin list/detail after a mutation that can shift balances or status. */
+function invalidateAdmin(queryClient: ReturnType<typeof useQueryClient>): void {
+  void queryClient.invalidateQueries({ queryKey: ['admin'] });
+}
+
+export function useUpdateAdminUser() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: UpdateUserRequest }) =>
+      apiRequest<AdminUser>('PATCH', `/api/admin/users/${id}`, body),
+    onSuccess: () => invalidateAdmin(queryClient),
+  });
+}
+
+export function useTopupUser() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, amount }: { id: string } & TopupRequest) =>
+      apiRequest<AdminUser>('POST', `/api/admin/users/${id}/topup`, { amount }),
+    onSuccess: () => invalidateAdmin(queryClient),
+  });
+}
+
+export function useInviteUser() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: InviteUserRequest) =>
+      apiRequest<AdminUser>('POST', '/api/admin/invite', body),
+    onSuccess: () => invalidateAdmin(queryClient),
+  });
+}
+
+export function useAdminJobs() {
+  return useQuery({
+    queryKey: queryKeys.adminJobs,
+    queryFn: () => apiRequest<AdminJobsResponse>('GET', '/api/admin/jobs'),
+    staleTime: 30 * 1000,
+  });
+}
+
+export function useAdminJobAction() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, action }: { id: string; action: 'pause' | 'resume' | 'run' }) =>
+      apiRequest<AdminJob>('POST', `/api/admin/jobs/${id}/${action}`, {}),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.adminJobs });
     },
   });
 }

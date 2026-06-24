@@ -16,7 +16,13 @@ model User {
   passwordHash  String? @map("password_hash")
   name          String?
   role          String  @default("USER")
+  status        String  @default("ACTIVE")
   emailVerified Boolean @default(false) @map("email_verified")
+
+  // credits (admin-managed): remaining = creditsPurchased - creditsUsed
+  creditsPurchased Int @default(0) @map("credits_purchased")
+  creditsUsed      Int @default(0) @map("credits_used")
+  lastTopupAt      DateTime? @map("last_topup_at")
 
   // hermes_profile (preferences only)
   model           String?

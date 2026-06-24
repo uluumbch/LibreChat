@@ -12,6 +12,7 @@ import { messagesRouter } from './routes/messages';
 import { profileRouter } from './routes/settings';
 import { discoveryRouter } from './routes/discovery';
 import { jobsRouter } from './routes/jobs';
+import { adminRouter } from './routes/admin';
 import { chatRouter } from './chat/routes';
 
 export function createApp(): Express {
@@ -32,6 +33,7 @@ export function createApp(): Express {
   app.use('/api/profile', profileRouter);
   app.use('/api/discovery', discoveryRouter);
   app.use('/api/jobs', jobsRouter);
+  app.use('/api/admin', adminRouter);
   app.use('/api/chat', chatRouter);
 
   app.use(errorMiddleware);
