@@ -1,228 +1,136 @@
-<p align="center">
-  <a href="https://librechat.ai">
-    <img src="client/public/assets/logo.svg" height="256">
-  </a>
-  <h1 align="center">
-    <a href="https://librechat.ai">LibreChat</a>
-  </h1>
-</p>
+# Hermes-Chat
 
-<p align="center">
-  <strong>English</strong> ·
-  <a href="README.zh.md">中文</a>
-</p>
+A multi-user web chat application whose **only** backend engine is
+[Hermes Agent](https://github.com/NousResearch/hermes-agent) (Nous Research). It surfaces Hermes'
+streaming, live tool-progress, images and reasoning in a familiar chat UI. The codebase is a
+greenfield build that uses [LibreChat](https://github.com/danny-avila/LibreChat) as a reference for
+its UI, auth, and rendering patterns — it does **not** include LibreChat's multi-provider backend.
 
-<p align="center">
-  <a href="https://discord.librechat.ai"> 
-    <img
-      src="https://img.shields.io/discord/1086345563026489514?label=&logo=discord&style=for-the-badge&logoWidth=20&logoColor=white&labelColor=000000&color=blueviolet">
-  </a>
-  <a href="https://www.youtube.com/@LibreChat"> 
-    <img
-      src="https://img.shields.io/badge/YOUTUBE-red.svg?style=for-the-badge&logo=youtube&logoColor=white&labelColor=000000&logoWidth=20">
-  </a>
-  <a href="https://docs.librechat.ai"> 
-    <img
-      src="https://img.shields.io/badge/DOCS-blue.svg?style=for-the-badge&logo=read-the-docs&logoColor=white&labelColor=000000&logoWidth=20">
-  </a>
-  <a aria-label="Sponsors" href="https://github.com/sponsors/danny-avila">
-    <img
-      src="https://img.shields.io/badge/SPONSORS-brightgreen.svg?style=for-the-badge&logo=github-sponsors&logoColor=white&labelColor=000000&logoWidth=20">
-  </a>
-</p>
+See the design/plan in the repository root planning notes for the full architecture.
 
-<p align="center">
-<a href="https://railway.com/deploy/librechat-official?referralCode=HI9hWz&utm_medium=integration&utm_source=readme&utm_campaign=librechat">
-  <img src="https://railway.com/button.svg" alt="Deploy on Railway" height="30">
-</a>
-<a href="https://zeabur.com/templates/0X2ZY8">
-  <img src="https://zeabur.com/button.svg" alt="Deploy on Zeabur" height="30"/>
-</a>
-<a href="https://template.cloud.sealos.io/deploy?templateName=librechat">
-  <img src="https://raw.githubusercontent.com/labring-actions/templates/main/Deploy-on-Sealos.svg" alt="Deploy on Sealos" height="30">
-</a>
-</p>
+## Layout
 
-<p align="center">
-  <a href="https://www.librechat.ai/docs/translation">
-    <img 
-      src="https://img.shields.io/badge/dynamic/json.svg?style=for-the-badge&color=2096F3&label=locize&query=%24.translatedPercentage&url=https://api.locize.app/badgedata/4cb2598b-ed4d-469c-9b04-2ed531a8cb45&suffix=%+translated" 
-      alt="Translation Progress">
-  </a>
-</p>
+| Workspace | Purpose |
+|---|---|
+| `shared/` | TypeScript contract shared by client and server: domain types, API DTOs, the normalized chat-stream **event protocol**, and Hermes API types. |
+| `server/` | Express BFF (TypeScript): JWT auth, Postgres/Prisma data layer, the **gateway pool router**, the Hermes client, and the **SSE translator** (Hermes events → normalized events). |
+| `client/` | React SPA: auth, chat, streaming render + tool-progress, settings. |
 
+## Isolation model (why a "pool")
 
-# ✨ Features
+Hermes runs **one gateway process per profile** with no per-request profile switching. To serve many
+users we run a small **fixed pool** of gateways (the app owns the LLM provider key) and isolate users
+at the **session** layer:
 
-- 🖥️ **UI & Experience** inspired by ChatGPT with enhanced design and features
+- each conversation maps to a Hermes **session id** (`X-Hermes-Session-Id`),
+- each user gets a stable **session key** (`X-Hermes-Session-Key: user:{userId}`) scoping long-term
+  memory,
+- persona/instructions are passed **per request**.
 
-- 🤖 **AI Model Selection**:  
-  - Anthropic (Claude), AWS Bedrock, OpenAI, Azure OpenAI, Google, Vertex AI, OpenAI Responses API (incl. Azure)
-  - [Custom Endpoints](https://www.librechat.ai/docs/quick_start/custom_endpoints): Use any OpenAI-compatible API with LibreChat, no proxy required
-  - Compatible with [Local & Remote AI Providers](https://www.librechat.ai/docs/configuration/librechat_yaml/ai_endpoints):
-    - Ollama, groq, Cohere, Mistral AI, Apple MLX, koboldcpp, together.ai,
-    - OpenRouter, Helicone, Perplexity, ShuttleAI, Deepseek, Qwen, and more
+A "user profile" here is a DB-stored **preferences** record (model, persona, tool visibility, memory
+toggle) — not a per-user Hermes OS profile.
 
-- 🔧 **[Code Interpreter API](https://www.librechat.ai/docs/features/code_interpreter)**: 
-  - Secure, Sandboxed Execution in Python, Node.js (JS/TS), Go, C/C++, Java, PHP, Rust, and Fortran
-  - Seamless File Handling: Upload, process, and download files directly
-  - No Privacy Concerns: Fully isolated and secure execution
+### Scaling the pool
 
-- 🔦 **Agents & Tools Integration**:  
-  - **[LibreChat Agents](https://www.librechat.ai/docs/features/agents)**:
-    - No-Code Custom Assistants: Build specialized, AI-driven helpers
-    - Agent Marketplace: Discover and deploy community-built agents
-    - Collaborative Sharing: Share agents with specific users and groups
-    - Flexible & Extensible: Use MCP Servers, tools, file search, code execution, and more
-    - [Skills](https://www.librechat.ai/docs/features/skills): Create reusable `SKILL.md` instruction bundles for manual, automatic, or always-on agent workflows
-    - [Subagents](https://www.librechat.ai/docs/features/subagents): Delegate focused work to isolated child agent runs with their own context windows
-    - Compatible with Custom Endpoints, OpenAI, Azure, Anthropic, AWS Bedrock, Google, Vertex AI, Responses API, and more
-    - [Model Context Protocol (MCP) Support](https://modelcontextprotocol.io/clients#librechat) for Tools
+`HERMES_GATEWAYS` is a JSON array, so you can run **several gateways** — including more than one for the
+same model to add capacity. The router pins each conversation to a gateway (a Hermes session is
+gateway-local) but spreads **new** conversations across the **least-loaded, healthy** gateway for the
+requested model. Each gateway caps at 8 concurrent runs (Hermes' limit is 10); when the whole pool is
+saturated a turn fails fast as a friendly `hermes_busy` rather than hanging. Gateway health is probed
+in the background and updated reactively on request failures; `GET /health` returns a per-gateway
+snapshot (`{ id, model, healthy, activeRuns, availableSlots }`) for observability.
 
-- 🔍 **Web Search**:  
-  - Search the internet and retrieve relevant information to enhance your AI context
-  - Combines search providers, content scrapers, and result rerankers for optimal results
-  - **Customizable Jina Reranking**: Configure custom Jina API URLs for reranking services
-  - **[Learn More →](https://www.librechat.ai/docs/features/web_search)**
+Each user is also held to a **per-user quota** (`USER_MAX_CONCURRENT_TURNS`, `USER_TURNS_PER_MINUTE`)
+so one account can't monopolize the pool or provider budget; over-quota turns are surfaced calmly in
+the chat UI. The quota is in-memory per BFF instance — move it to a shared store (e.g. Redis) before
+running multiple BFF replicas.
 
-- 🪄 **Generative UI with Code Artifacts**:  
-  - [Code Artifacts](https://youtu.be/GfTj7O4gmd0?si=WJbdnemZpJzBrJo3) allow creation of React, HTML, and Mermaid diagrams directly in chat
+### Service tiers (paid-upgrade groundwork)
 
-- 🎨 **Image Generation & Editing**
-  - Text-to-image and image-to-image with [GPT-Image-1](https://www.librechat.ai/docs/features/image_gen#1--openai-image-tools-recommended)
-  - Text-to-image with [DALL-E (3/2)](https://www.librechat.ai/docs/features/image_gen#2--dalle-legacy), [Stable Diffusion](https://www.librechat.ai/docs/features/image_gen#3--stable-diffusion-local), [Flux](https://www.librechat.ai/docs/features/image_gen#4--flux), or any [MCP server](https://www.librechat.ai/docs/features/image_gen#5--model-context-protocol-mcp)
-  - Produce stunning visuals from prompts or refine existing images with a single instruction
+Each user has a **tier**: `free` (shared pool, standard limits) or `dedicated` (a higher quota —
+`DEDICATED_*` — and, optionally, a **reserved gateway** their new conversations route to). An admin
+grants it via `PATCH /api/admin/users/:id/tier` with `{ "tier": "dedicated", "dedicatedGatewayId":
+"<pool gateway id>" }` (omit the id for higher limits on the shared pool); `{ "tier": "free" }` clears
+it. This is the operator seam for the upgrade until billing exists — bring-your-own provider keys are
+a later step. The tier is shown read-only in Settings.
 
-- 💾 **Presets & Context Management**:  
-  - Create, Save, & Share Custom Presets  
-  - Switch between AI Endpoints and Presets mid-chat
-  - Edit, Resubmit, and Continue Messages with Conversation branching  
-  - Create and share prompts with specific users and groups
-  - [Fork Messages & Conversations](https://www.librechat.ai/docs/features/fork) for Advanced Context control
+## Run with Docker (recommended)
 
-- 💬 **Multimodal & File Interactions**:  
-  - Upload and analyze images with Claude 3, GPT-4.5, GPT-4o, o1, Llama-Vision, and Gemini 📸  
-  - Chat with Files using Custom Endpoints, OpenAI, Azure, Anthropic, AWS Bedrock, & Google 🗃️
+The stack runs the **real Hermes agent** (built from the `vendor/hermes-agent` submodule — a fork of
+`NousResearch/hermes-agent`) alongside Postgres, the BFF (auto-applies Prisma migrations + hot
+reloads), and the Vite client (hot reloads). Hermes exposes its OpenAI-compatible **api_server** on
+`:8642`, which the BFF speaks natively. The agent calls an external LLM provider — **OpenRouter** or
+**DeepSeek** — for the LLM (no GPU needed).
 
-- 🌎 **Multilingual UI**:
-  - English, 中文 (简体), 中文 (繁體), العربية, Deutsch, Español, Français, Italiano
-  - Polski, Português (PT), Português (BR), Русский, 日本語, Svenska, 한국어, Tiếng Việt
-  - Türkçe, Nederlands, עברית, Català, Čeština, Dansk, Eesti, فارسی
-  - Suomi, Magyar, Հայերեն, Bahasa Indonesia, ქართული, Latviešu, ไทย, ئۇيغۇرچە
+**Prerequisites**
 
-- 🧠 **Reasoning UI**:  
-  - Dynamic Reasoning UI for Chain-of-Thought/Reasoning AI models like DeepSeek-R1
+1. Fetch the agent submodule: `git submodule update --init` (from the repo root or `hermes/`).
+2. Provide secrets — copy the env template and fill it in:
 
-- 🎨 **Customizable Interface**:  
-  - Customizable Dropdown & Interface that adapts to both power users and newcomers
+   ```bash
+   cd hermes
+   cp .env.example .env
+   # set HERMES_API_KEY (any strong string) and AT LEAST ONE provider key:
+   #   OPENROUTER_API_KEY (https://openrouter.ai/keys) and/or
+   #   DEEPSEEK_API_KEY   (https://platform.deepseek.com/api_keys)
+   ```
 
-- 🌊 **[Resumable Streams](https://www.librechat.ai/docs/features/resumable_streams)**:  
-  - Never lose a response: AI responses automatically reconnect and resume if your connection drops
-  - Multi-Tab & Multi-Device Sync: Open the same chat in multiple tabs or pick up on another device
-  - Production-Ready: Works from single-server setups to horizontally scaled deployments with Redis
+**Run**
 
-- 🗣️ **Speech & Audio**:  
-  - Chat hands-free with Speech-to-Text and Text-to-Speech  
-  - Automatically send and play Audio  
-  - Supports OpenAI, Azure OpenAI, and Elevenlabs
+```bash
+docker compose up --build       # first build of the Hermes image is large (Python + Node + browser)
+```
 
-- 📥 **Import & Export Conversations**:  
-  - Import Conversations from LibreChat, ChatGPT, Chatbot UI  
-  - Export conversations as screenshots, markdown, text, json
+Open **http://localhost:5273**, register an account, and chat — the agent streams real tokens and
+live tool steps (terminal, web search, files…). The BFF is on `:8090` (`/health`), the Hermes
+api_server on `:8642` (`/health`, `/v1/models`), Postgres on `:5432`. Editing source hot-reloads the
+BFF/client inside their containers.
 
-- 🔍 **Search & Discovery**:  
-  - Search all messages/conversations
+### Choosing the model / provider
 
-- 👥 **Multi-User & Secure Access**:
-  - Multi-User, Secure Authentication with OAuth2, LDAP, & Email Login Support
-  - Built-in Moderation, and Token spend tools
+Set keys in `hermes/.env` and pick the model with `HERMES_PROVIDER` / `HERMES_MODEL` (leave them
+empty for the default `anthropic/claude-opus-4.6` via OpenRouter):
 
-- ⚙️ **Configuration & Deployment**:  
-  - Configure Proxy, Reverse Proxy, Docker, & many Deployment options  
-  - Use [S3 with CloudFront](https://www.librechat.ai/docs/configuration/cdn/cloudfront) for stable media links, edge delivery, signed cookies, and secured downloads
-  - Use completely local or deploy on the cloud
+- **OpenRouter** (default): set `OPENROUTER_API_KEY`, then any OpenRouter id, e.g.
+  `HERMES_MODEL=nousresearch/hermes-4-405b` — or DeepSeek *via* OpenRouter with
+  `HERMES_MODEL=deepseek/deepseek-chat`.
+- **DeepSeek (direct)**: set `DEEPSEEK_API_KEY`, then `HERMES_PROVIDER=deepseek` and
+  `HERMES_MODEL=deepseek-chat` (or `deepseek-reasoner`).
 
-- 📖 **Open-Source & Community**:  
-  - Completely Open-Source & Built in Public  
-  - Community-driven development, support, and feedback
+The name the BFF/UI shows (`hermes-agent`) is fixed via `API_SERVER_MODEL_NAME`, independent of the
+underlying model. You can also change it at runtime:
+`docker compose exec hermes-agent hermes config set model.default <id>` (then restart the service).
+Hermes supports many other providers too (Gemini, Groq, Novita, Kimi, …) — add the matching
+`<PROVIDER>_API_KEY` to the `hermes-agent` service the same way.
 
-[For a thorough review of our features, see our docs here](https://docs.librechat.ai/) 📚
+### VS Code Dev Containers
 
-## 🪶 All-In-One AI Conversations with LibreChat
+Open the `hermes/` folder and **Reopen in Container** — it uses the same compose stack and drops you
+into the `server` container (`.devcontainer/devcontainer.json`). Note: the first open builds the
+Hermes image, so it inherits the heavy first-build cost above.
 
-LibreChat is a self-hosted AI chat platform that unifies all major AI providers in a single, privacy-focused interface.
+### Production-style images
 
-Beyond chat, LibreChat provides AI Agents, Model Context Protocol (MCP) support, Artifacts, Code Interpreter, custom actions, conversation search, and enterprise-ready multi-user authentication.
+```bash
+docker compose -f docker-compose.prod.yml up --build   # client (nginx) on http://localhost:8080
+```
 
-Open source, actively developed, and built for anyone who values control over their AI infrastructure.
+### Without Docker
 
----
+Requires Node 22, a local Postgres, and a running Hermes api_server (`hermes gateway` with
+`API_SERVER_ENABLED=true` + `API_SERVER_KEY`) reachable at the `baseURL` below:
 
-## 🌐 Resources
+```bash
+cd hermes
+cp server/.env.example server/.env   # edit DATABASE_URL, JWT secrets, HERMES_GATEWAYS (apiKey = API_SERVER_KEY)
+npm install
+npm run db:migrate
+npm run dev:server                   # BFF on :8090
+npm run dev:client                   # client on :5273
+```
 
-**GitHub Repo:**
-  - **RAG API:** [github.com/danny-avila/rag_api](https://github.com/danny-avila/rag_api)
-  - **Website:** [github.com/LibreChat-AI/librechat.ai](https://github.com/LibreChat-AI/librechat.ai)
-
-**Other:**
-  - **Website:** [librechat.ai](https://librechat.ai)
-  - **Documentation:** [librechat.ai/docs](https://librechat.ai/docs)
-  - **Blog:** [librechat.ai/blog](https://librechat.ai/blog)
-
----
-
-## 📝 Changelog
-
-Keep up with the latest updates by visiting the releases page and notes:
-- [Releases](https://github.com/danny-avila/LibreChat/releases)
-- [Changelog](https://www.librechat.ai/changelog) 
-
-**⚠️ Please consult the [changelog](https://www.librechat.ai/changelog) for breaking changes before updating.**
-
----
-
-## ⭐ Star History
-
-<p align="center">
-  <a href="https://star-history.com/#danny-avila/LibreChat&Date">
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=danny-avila/LibreChat&type=Date&theme=dark" onerror="this.src='https://api.star-history.com/svg?repos=danny-avila/LibreChat&type=Date'" />
-  </a>
-</p>
-<p align="center">
-  <a href="https://trendshift.io/repositories/4685" target="_blank" style="padding: 10px;">
-    <img src="https://trendshift.io/api/badge/repositories/4685" alt="danny-avila%2FLibreChat | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/>
-  </a>
-  <a href="https://runacap.com/ross-index/q1-24/" target="_blank" rel="noopener" style="margin-left: 20px;">
-    <img style="width: 260px; height: 56px" src="https://runacap.com/wp-content/uploads/2024/04/ROSS_badge_white_Q1_2024.svg" alt="ROSS Index - Fastest Growing Open-Source Startups in Q1 2024 | Runa Capital" width="260" height="56"/>
-  </a>
-</p>
-
----
-
-## ✨ Contributions
-
-Contributions, suggestions, bug reports and fixes are welcome!
-
-For new features, components, or extensions, please open an issue and discuss before sending a PR.
-
-If you'd like to help translate LibreChat into your language, we'd love your contribution! Improving our translations not only makes LibreChat more accessible to users around the world but also enhances the overall user experience. Please check out our [Translation Guide](https://www.librechat.ai/docs/translation).
-
----
-
-## 💖 This project exists in its current state thanks to all the people who contribute
-
-<a href="https://github.com/danny-avila/LibreChat/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=danny-avila/LibreChat" />
-</a>
-
----
-
-## 🎉 Special Thanks
-
-We thank [Locize](https://locize.com) for their translation management tools that support multiple languages in LibreChat.
-
-<p align="center">
-  <a href="https://locize.com" target="_blank" rel="noopener noreferrer">
-    <img src="https://github.com/user-attachments/assets/d6b70894-6064-475e-bb65-92a9e23e0077" alt="Locize Logo" height="50">
-  </a>
-</p>
+> **Security note:** the Hermes agent executes its tools (terminal, file ops, …) **inside the
+> `hermes-agent` container**, using the app-owned OpenRouter key. That container is the isolation
+> boundary — network-restrict it and gate risky toolsets before exposing the app publicly. The BFF
+> isolates *users* at the Hermes **session** layer (`X-Hermes-Session-Key: user:{id}`), not by
+> running a process per user.

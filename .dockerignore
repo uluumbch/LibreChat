@@ -1,17 +1,8 @@
-**/.circleci
-**/.editorconfig
-**/.dockerignore
-**/.git
-**/.DS_Store
-**/.vscode
 **/node_modules
-
-# Specific patterns to ignore
-data-node
-meili_data*
-librechat*
-Dockerfile*
-docs
-
-# Ignore all hidden files
-.*
+**/dist
+**/.env
+**/*.log
+.git
+.devcontainer
+# The Hermes agent is built by its own service (./vendor/hermes-agent), not the BFF/client image.
+vendor

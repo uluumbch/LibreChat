@@ -1,18 +1,23 @@
 {
-  "dockerComposeFile": "docker-compose.yml",
-  "service": "app",
-  "workspaceFolder": "/workspaces",
+  "name": "Hermes Chat",
+  "dockerComposeFile": ["../docker-compose.yml"],
+  "service": "server",
+  "workspaceFolder": "/app",
+  "shutdownAction": "stopCompose",
+  "forwardPorts": [5273, 8090, 5432],
+  "portsAttributes": {
+    "5273": { "label": "client (Vite)" },
+    "8090": { "label": "BFF (API)" },
+    "5432": { "label": "Postgres" }
+  },
   "customizations": {
     "vscode": {
-      "extensions": [],
-      "settings": {
-        "terminal.integrated.profiles.linux": {
-          "bash": null
-        }
-      }
+      "extensions": [
+        "Prisma.prisma",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "bradlc.vscode-tailwindcss"
+      ]
     }
-  },
-  "postCreateCommand": "",
-  "features": { "ghcr.io/devcontainers/features/git:1": {} },
-  "remoteUser": "vscode"
+  }
 }

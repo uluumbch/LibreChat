@@ -1,11 +1,17 @@
 /// <reference types="vite/client" />
 
-interface ImportMetaEnv {
-  readonly VITE_ENABLE_LOGGER: string;
-  readonly VITE_LOGGER_FILTER: string;
-  // Add other env variables here
-}
-
-interface ImportMeta {
-  readonly env: ImportMetaEnv;
+declare module 'sse.js' {
+  export interface SSEOptions {
+    headers?: Record<string, string>;
+    payload?: string;
+    method?: string;
+    withCredentials?: boolean;
+  }
+  export class SSE extends EventTarget {
+    constructor(url: string, options?: SSEOptions);
+    readyState: number;
+    stream(): void;
+    close(): void;
+    addEventListener(type: string, listener: (event: MessageEvent) => void): void;
+  }
 }
