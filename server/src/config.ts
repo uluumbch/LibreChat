@@ -11,6 +11,12 @@ const gatewaySchema = z.object({
 
 export type GatewayConfig = z.infer<typeof gatewaySchema>;
 
+/** Wrap a schema so an empty-string env value (how compose passes unset vars) is
+ *  treated as absent rather than validated (e.g. "" must not fail `.url()`). */
+function emptyToUndefined<T extends z.ZodTypeAny>(schema: T) {
+  return z.preprocess((v) => (v === '' ? undefined : v), schema.optional());
+}
+
 const envSchema = z.object({
   PORT: z.coerce.number().default(8090),
   CORS_ORIGIN: z.string().default('http://localhost:5273'),
@@ -27,6 +33,14 @@ const envSchema = z.object({
   DEDICATED_TURNS_PER_MINUTE: z.coerce.number().int().positive().default(120),
   // Credits charged per 1k tokens of metered usage (tunable without code changes).
   CREDITS_PER_1K_TOKENS: z.coerce.number().positive().default(1),
+  // Composio third-party apps. Key is optional — when unset, the feature is
+  // "not configured" (admin toggles still work, but connect/search fail clearly).
+  // docker compose passes unset optional vars as "" — coerce empty → undefined so
+  // an empty COMPOSIO_REDIRECT_URL / COMPOSIO_BASE_URL doesn't fail .url().
+  COMPOSIO_API_KEY: emptyToUndefined(z.string()).optional(),
+  COMPOSIO_BASE_URL: emptyToUndefined(z.string().url()).default('https://backend.composio.dev/api/v3'),
+  // Where Composio sends the user after OAuth; defaults to the app settings tab.
+  COMPOSIO_REDIRECT_URL: emptyToUndefined(z.string().url()).optional(),
 });
 
 function parseGateways(raw: string): GatewayConfig[] {
@@ -80,6 +94,11 @@ function loadConfig() {
     },
     credits: {
       perThousandTokens: env.CREDITS_PER_1K_TOKENS,
+    },
+    composio: {
+      apiKey: env.COMPOSIO_API_KEY ?? null,
+      baseUrl: env.COMPOSIO_BASE_URL,
+      redirectUrl: env.COMPOSIO_REDIRECT_URL ?? null,
     },
   } as const;
 }

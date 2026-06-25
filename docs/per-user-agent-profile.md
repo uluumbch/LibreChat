@@ -27,6 +27,7 @@ through whichever gateway serves the turn. This was delivered in two phases:
 | **Persona / instructions** | ✅ | ✅ (always) | `system_prompt` / `instructions` |
 | **Toolsets & MCP** (`enabledToolsets`) | ✅ | ✅ **(Phase 2)** | `allowed_toolsets` on chat/run → gateway restricts |
 | **Skills** (`enabledSkills`) | ✅ | ✅ **(Phase 3)** | `allowed_skills` on chat/run → gateway hides + hard-gates `skill_view` |
+| **Third-party apps** (`composioEnabled` + `composioToolkits`) | ✅ | ✅ | `composio_user_id` + `composio_toolkits` on chat/run → gateway offers a per-user `composio` toolset scoped to the user's connected accounts. See [composio-third-party-apps.md](./composio-third-party-apps.md) |
 | **Provider API key** | ❌ (by design) | n/a | gateway-managed; "API key per user" was scoped to model/gateway selection, **not** BYOK |
 
 > **Toolsets vs MCP:** the `enabledToolsets` list covers **both** the gateway's built-in toolsets

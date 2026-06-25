@@ -145,6 +145,44 @@ MCP servers are **global** (enabled for everyone by default). "Only user A" = gi
 explicit `enabledToolsets` allowlist that excludes the server (empty list = inherit all). Awkward at
 scale by design — a true additive per-user grant was deferred.
 
+## Part D — Composio third-party apps (`composio` toolset)
+
+Per-user connected third-party accounts (Google Drive, Notion, Google Sheets, …) via
+[Composio](https://composio.dev), as a **per-request** toolset. Full design:
+[composio-third-party-apps.md](./composio-third-party-apps.md).
+
+### D1. Carriers — `gateway/session_context.py`
+
+Two new session vars, mirroring `HERMES_SESSION_ALLOWED_SKILLS`:
+`HERMES_SESSION_COMPOSIO_USER_ID` (the LibreChatHermes DB user id Composio scopes accounts to) and
+`HERMES_SESSION_COMPOSIO_TOOLKITS` (comma-joined toolkit allowlist). Added to `_VAR_MAP`,
+`set_session_vars(...)`, and `clear_session_vars(...)`.
+
+### D2. Toolset — `tools/composio_tool.py` (new)
+
+Registers two fixed meta-tools under toolset `composio`:
+- `composio_search_tools(query, toolkits?)` → `Composio().tools.get_raw_composio_tools(...)`.
+- `composio_execute_tool(slug, arguments)` → `Composio().tools.execute(slug, arguments, user_id=...)`,
+  rejecting any slug whose toolkit isn't in the session allowlist.
+
+`check_fn=check_composio_available` gates only **global** availability (`COMPOSIO_API_KEY` + SDK
+importable) — it is intentionally **session-independent** because `get_definitions()` caches `check_fn`
+results for ~30 s process-wide, so per-user state in a `check_fn` would leak across users.
+
+### D3. Per-request gating — `gateway/platforms/api_server.py`
+
+Per-user gating is by **toolset membership**, not `check_fn`. `_create_agent(...,
+composio_user_id_override=None)` **appends** `composio` to the agent's `enabled_toolsets` when a
+Composio user id is present — *after* the `allowed_toolsets` restrict step (Composio has its own admin
+opt-in, independent of the toolset allowlist). `_run_agent` / `_handle_runs` thread
+`composio_user_id` / `composio_toolkits` from the request body into both `_create_agent` and
+`set_session_vars`. `_normalize_composio_user_id(value)` is the string analogue of `_normalize_str_list`.
+
+### D4. Image — `Dockerfile`
+
+Installs the `composio` Python SDK outside the frozen `uv sync` (`uv pip install composio`), so no
+`uv.lock` regen is needed.
+
 ## Why a fork and not a per-user gateway
 
 The alternative — one gateway process per user, each with its own `config.yaml` — was evaluated and
@@ -175,11 +213,13 @@ for f in gateway/platforms/api_server.py gateway/session_context.py agent/skill_
 
 | File | Part | Change |
 |------|------|--------|
-| `gateway/platforms/api_server.py` | A + B + C | overrides + `set_session_vars` wiring; `/api/mcp-servers` routes + reload; MCP entries in `_handle_toolsets` |
-| `gateway/session_context.py` | B | `HERMES_SESSION_ALLOWED_SKILLS` contextvar |
+| `gateway/platforms/api_server.py` | A + B + C + D | overrides + `set_session_vars` wiring; `/api/mcp-servers` routes + reload; MCP entries in `_handle_toolsets`; `composio_user_id_override` + `_normalize_composio_user_id` |
+| `gateway/session_context.py` | B + D | `HERMES_SESSION_ALLOWED_SKILLS`; `HERMES_SESSION_COMPOSIO_USER_ID` / `_TOOLKITS` contextvars |
 | `agent/skill_utils.py` | B | `get_allowed_skill_names`, `skill_is_allowed` |
 | `agent/prompt_builder.py` | B | allowlist read + cache key + index filters |
 | `tools/skills_tool.py` | B | `skill_view` gate + `skills_list` filter + `_allowed` helper |
+| `tools/composio_tool.py` | D | new `composio` toolset (search + execute meta-tools) |
+| `Dockerfile` | D | install the `composio` Python SDK |
 
 (Part C reuses existing `hermes_cli.mcp_config._save_mcp_server`/`_remove_mcp_server` and
 `tools.mcp_tool.shutdown_mcp_servers`/`discover_mcp_tools` — no changes to those modules.)
@@ -194,7 +234,9 @@ for f in gateway/platforms/api_server.py gateway/session_context.py agent/skill_
 - Grep anchors for finding our changes: `allowed_toolsets`, `allowed_skills`, `_normalize_str_list`,
   `enabled_toolsets_override`, `allowed_skills_override`, `HERMES_SESSION_ALLOWED_SKILLS`,
   `skill_is_allowed`, `per-session toolset restriction`, `not enabled for this session`,
-  `/api/mcp-servers`, `_handle_create_mcp_server`, `_reload_mcp_servers`, `MCP ·`.
+  `/api/mcp-servers`, `_handle_create_mcp_server`, `_reload_mcp_servers`, `MCP ·`,
+  `HERMES_SESSION_COMPOSIO_USER_ID`, `composio_user_id_override`, `_normalize_composio_user_id`,
+  `composio_search_tools`, `check_composio_available`.
 
 ## Verification
 

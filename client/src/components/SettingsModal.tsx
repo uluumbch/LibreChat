@@ -4,8 +4,9 @@ import type { SkillOption, UpdateProfileRequest } from '@hermes/shared';
 import { useAuth } from '~/auth/AuthContext';
 import { useModels, useSkills, useToolsets, useUpdateProfile } from '~/data/queries';
 import { Button, Spinner } from '~/components/ui';
+import { ThirdPartyApps } from './ThirdPartyApps';
 
-type Tab = 'profile' | 'skills';
+type Tab = 'profile' | 'skills' | 'apps';
 
 export function SettingsModal({ onClose }: { onClose: () => void }): JSX.Element {
   const { user, setUser } = useAuth();
@@ -91,6 +92,9 @@ export function SettingsModal({ onClose }: { onClose: () => void }): JSX.Element
           </button>
           <button type="button" onClick={() => setTab('skills')} className={tabClass(tab === 'skills')}>
             Skills{skillCount ? ` (${skillCount})` : ''}
+          </button>
+          <button type="button" onClick={() => setTab('apps')} className={tabClass(tab === 'apps')}>
+            Third-Party Apps
           </button>
         </div>
 
@@ -255,11 +259,13 @@ export function SettingsModal({ onClose }: { onClose: () => void }): JSX.Element
               </div>
             </div>
           )}
+
+          {tab === 'apps' && <ThirdPartyApps />}
         </div>
 
         <div className="flex justify-end gap-2 border-t border-black/[0.07] px-5 py-4">
           <Button variant="ghost" onClick={onClose}>
-            {tab === 'skills' ? 'Close' : 'Cancel'}
+            {tab === 'profile' ? 'Cancel' : 'Close'}
           </Button>
           {tab === 'profile' && (
             <Button onClick={() => void save()} disabled={updateProfile.isPending}>

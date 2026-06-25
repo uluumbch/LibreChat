@@ -66,6 +66,10 @@ export interface HermesProfile {
   memoryEnabled: boolean;
   enabledToolsets: string[];
   enabledSkills: string[];
+  /** Whether the admin has enabled Composio third-party apps for this user. */
+  composioEnabled: boolean;
+  /** Toolkit slugs the admin permits this user to connect (e.g. ['googledrive']). */
+  composioToolkits: string[];
 }
 
 /** Admin-managed credit balance. `remaining = purchased - used`. */
@@ -242,6 +246,33 @@ export interface UpdateProfileRequest {
   enabledToolsets?: string[];
 }
 
+/* --------------------------- Composio (third-party apps) --------------------------- */
+
+/** A Composio toolkit (third-party service) in the context of one user. */
+export interface ComposioToolkit {
+  /** Composio toolkit slug, e.g. 'googledrive', 'notion', 'googlesheets'. */
+  slug: string;
+  /** Human-readable name, e.g. 'Google Drive'. */
+  name: string;
+  /** Whether the admin has granted this user access to connect the toolkit. */
+  allowed: boolean;
+  /** Whether the user currently has an active connected account for the toolkit. */
+  connected: boolean;
+}
+
+export interface ComposioToolkitsResponse {
+  /** Whether Composio is enabled for this user at all (admin toggle). */
+  enabled: boolean;
+  /** Whether the gateway/server has a Composio API key configured. */
+  configured: boolean;
+  items: ComposioToolkit[];
+}
+
+/** Returned when initiating an OAuth connection — the URL to send the user to. */
+export interface ComposioConnectResponse {
+  redirectUrl: string;
+}
+
 /* ----------------------------- Discovery DTOs ----------------------------- */
 
 export interface ModelOption {
@@ -339,6 +370,12 @@ export interface AdminUserDetail extends AdminUser {
   skills: SkillOption[];
   /** Names of skills enabled for this user (subset of `skills`). */
   enabledSkills: string[];
+  /** Whether Composio third-party apps are enabled for this user. */
+  composioEnabled: boolean;
+  /** Toolkit slugs the user is permitted to connect (subset of `composioCatalog`). */
+  composioToolkits: string[];
+  /** The full Composio toolkit catalog the admin can choose from. */
+  composioCatalog: ComposioToolkit[];
   jobs: JobSummary[];
   usage: UserUsageSummary;
 }
@@ -349,6 +386,8 @@ export interface UpdateUserRequest {
   status?: AccountStatus;
   enabledToolsets?: string[];
   enabledSkills?: string[];
+  composioEnabled?: boolean;
+  composioToolkits?: string[];
 }
 
 export interface TopupRequest {
@@ -366,6 +405,8 @@ export interface InviteUserRequest {
   instructions?: string | null;
   enabledToolsets?: string[];
   enabledSkills?: string[];
+  composioEnabled?: boolean;
+  composioToolkits?: string[];
 }
 
 /** A scheduled job paired with the user who owns it (admin-wide view). */

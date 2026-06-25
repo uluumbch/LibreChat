@@ -14,6 +14,8 @@ import type {
   Conversation,
   ConversationUsage,
   CreateConversationRequest,
+  ComposioConnectResponse,
+  ComposioToolkitsResponse,
   CreateJobRequest,
   CreateMcpServerRequest,
   CursorPage,
@@ -313,5 +315,36 @@ export function useDeleteMcpServer() {
     mutationFn: (name: string) =>
       apiRequest<void>('DELETE', `/api/admin/mcp-servers/${encodeURIComponent(name)}`),
     onSuccess: () => invalidateMcp(queryClient),
+  });
+}
+
+/* --------------------------- Composio (third-party apps) --------------------------- */
+
+export function useComposioToolkits() {
+  return useQuery({
+    queryKey: queryKeys.composioToolkits,
+    queryFn: () => apiRequest<ComposioToolkitsResponse>('GET', '/api/composio/toolkits'),
+    staleTime: 15 * 1000,
+  });
+}
+
+export function useConnectComposio() {
+  return useMutation({
+    mutationFn: (toolkit: string) =>
+      apiRequest<ComposioConnectResponse>(
+        'POST',
+        `/api/composio/connections/${encodeURIComponent(toolkit)}`,
+      ),
+  });
+}
+
+export function useDisconnectComposio() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (toolkit: string) =>
+      apiRequest<void>('DELETE', `/api/composio/connections/${encodeURIComponent(toolkit)}`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.composioToolkits });
+    },
   });
 }

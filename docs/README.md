@@ -45,6 +45,7 @@ The app was originally nested under `/hermes` inside a LibreChat checkout; it ha
 | [architecture.md](./architecture.md) | System overview, gateway pool, the two chat engines, tiers/quota |
 | [per-user-agent-profile.md](./per-user-agent-profile.md) | Per-user model / persona / MCP toolsets / skills — admin-configured. Phase 1 (storage + UI) and Phase 2 (gateway enforcement) |
 | [admin-panel.md](./admin-panel.md) | Admin app: overview, users, credits, jobs; role-based routing & guards |
+| [composio-third-party-apps.md](./composio-third-party-apps.md) | Per-user connected third-party accounts (Google Drive/Notion/Sheets) via Composio — admin-granted, user-connected |
 | [credits-and-usage.md](./credits-and-usage.md) | Credit metering (M5) and usage analytics from persisted data (M6) |
 | [gateway-modifications.md](./gateway-modifications.md) | **Exactly** what we changed in the vendored `hermes-agent` Python and how to maintain it vs upstream |
 

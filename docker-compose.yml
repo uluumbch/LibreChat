@@ -64,6 +64,9 @@ services:
       # HERMES_PROVIDER clears any stale base_url so the provider's own endpoint
       # is used (e.g. DeepSeek → https://api.deepseek.com/v1).
       HERMES_BASE_URL: ${HERMES_BASE_URL:-}
+      # Composio third-party apps — the gateway uses this to execute tools on a
+      # user's connected accounts. Same key as the server. Unset = feature off.
+      COMPOSIO_API_KEY: ${COMPOSIO_API_KEY:-}
     volumes:
       - hermes-agent-data:/opt/data
     ports:
@@ -90,6 +93,12 @@ services:
       JWT_REFRESH_SECRET: dev-refresh-secret-change-me
       HERMES_GATEWAYS: '[{"id":"default","model":"hermes-agent","baseURL":"http://hermes-agent:8642","apiKey":"${HERMES_API_KEY}"}]'
       HERMES_DEFAULT_MODEL: hermes-agent
+      # Composio third-party apps — the server uses this for the connection
+      # lifecycle (auth configs, OAuth initiate, list/disconnect). Same key as the
+      # gateway. Unset = feature reports "not configured". COMPOSIO_REDIRECT_URL is
+      # where the browser returns after OAuth (defaults to the SPA origin).
+      COMPOSIO_API_KEY: ${COMPOSIO_API_KEY:-}
+      COMPOSIO_REDIRECT_URL: ${COMPOSIO_REDIRECT_URL:-}
       # Reliable file watching on bind mounts (macOS/Windows Docker).
       CHOKIDAR_USEPOLLING: 'true'
     ports:

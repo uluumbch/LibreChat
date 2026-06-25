@@ -6,6 +6,7 @@ import { logger } from '../logger';
 import { HttpError, notFound, serviceBusy } from '../errors';
 import { gatewayPool } from '../hermes/pool';
 import { sessionKeyFor } from '../users/provision';
+import { composioTurnFields } from '../composio/client';
 import { toApiMessage } from '../messages/mapper';
 import { SseWriter } from './sse';
 import { parseSse } from './parse';
@@ -83,6 +84,7 @@ export async function runChatTurnViaRuns(params: RunsChatTurnParams): Promise<vo
         model: ctx.pooled.model,
         allowed_toolsets: ctx.user.enabledToolsets.length > 0 ? ctx.user.enabledToolsets : undefined,
         allowed_skills: ctx.user.enabledSkills.length > 0 ? ctx.user.enabledSkills : undefined,
+        ...composioTurnFields(ctx.user, userId),
       },
       { sessionKey: sessionKeyFor(userId) },
     );

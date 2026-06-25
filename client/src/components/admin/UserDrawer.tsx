@@ -69,6 +69,8 @@ export function UserDrawer({
   const [instructions, setInstructions] = useState('');
   const [toolsets, setToolsets] = useState<AdminUserToolset[]>([]);
   const [skills, setSkills] = useState<SkillToggle[]>([]);
+  const [composioEnabled, setComposioEnabled] = useState(false);
+  const [composioApps, setComposioApps] = useState<{ slug: string; name: string; allowed: boolean }[]>([]);
 
   useEffect(() => {
     if (detail) {
@@ -82,6 +84,10 @@ export function UserDrawer({
           description: s.description,
           enabled: enabled.has(s.name),
         })),
+      );
+      setComposioEnabled(detail.composioEnabled);
+      setComposioApps(
+        detail.composioCatalog.map((t) => ({ slug: t.slug, name: t.name, allowed: t.allowed })),
       );
     }
   }, [detail]);
@@ -105,6 +111,8 @@ export function UserDrawer({
         instructions: instructions.length > 0 ? instructions : null,
         enabledToolsets: toolsets.filter((t) => t.enabled).map((t) => t.name),
         enabledSkills: skills.filter((s) => s.enabled).map((s) => s.name),
+        composioEnabled,
+        composioToolkits: composioApps.filter((a) => a.allowed).map((a) => a.slug),
       },
     });
     onFlash('Agent profile saved');
@@ -519,6 +527,66 @@ export function UserDrawer({
                   </div>
                 </div>
               )}
+
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 }}>
+                  <label style={{ fontSize: 12.5, fontWeight: 550, color: '#3f3f46' }}>
+                    Third-party apps (Composio)
+                  </label>
+                  <Toggle on={composioEnabled} onClick={() => setComposioEnabled((v) => !v)} />
+                </div>
+                <p style={{ margin: '0 0 9px', fontSize: 11.5, color: '#a1a1aa', lineHeight: 1.5 }}>
+                  Let this user connect their own third-party accounts. Pick which apps they may connect;
+                  they authenticate each one from their own settings.
+                </p>
+                {composioEnabled && (
+                  <div style={{ border: '1px solid #ebebef', borderRadius: 12, overflow: 'hidden' }}>
+                    {composioApps.map((app, i) => (
+                      <div
+                        key={app.slug}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 11,
+                          padding: '11px 13px',
+                          borderBottom: i === composioApps.length - 1 ? 'none' : '1px solid #f4f4f6',
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: 7,
+                            background: 'rgba(91,84,232,0.1)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontFamily: MONO,
+                            fontSize: 10.5,
+                            fontWeight: 600,
+                            color: ACCENT,
+                            flex: 'none',
+                          }}
+                        >
+                          {app.name.slice(0, 2).toUpperCase()}
+                        </span>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontSize: 13, fontWeight: 500, color: '#27272a' }}>{app.name}</div>
+                          <div style={{ fontFamily: MONO, fontSize: 11, color: '#a1a1aa' }}>{app.slug}</div>
+                        </div>
+                        <Toggle
+                          on={app.allowed}
+                          onClick={() =>
+                            setComposioApps((prev) =>
+                              prev.map((a) => (a.slug === app.slug ? { ...a, allowed: !a.allowed } : a)),
+                            )
+                          }
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               {detail.jobs.length > 0 && (
                 <div style={{ marginBottom: 20 }}>

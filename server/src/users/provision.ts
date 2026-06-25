@@ -14,6 +14,8 @@ export function provisionDefaults(startingCredits = STARTER_CREDITS): {
   memoryEnabled: boolean;
   enabledToolsets: string[];
   enabledSkills: string[];
+  composioEnabled: boolean;
+  composioToolkits: string[];
   creditsPurchased: number;
 } {
   return {
@@ -22,6 +24,8 @@ export function provisionDefaults(startingCredits = STARTER_CREDITS): {
     memoryEnabled: true,
     enabledToolsets: [],
     enabledSkills: [],
+    composioEnabled: false,
+    composioToolkits: [],
     creditsPurchased: startingCredits,
   };
 }

@@ -43,10 +43,10 @@ So tabs are linkable, bookmarkable, and back/forward works.
 |--------|------|---------|
 | GET | `/api/admin/overview` | Totals, credit stats, low-credit alerts, recent activity, 14-day credit chart |
 | GET | `/api/admin/users?q=` | User list (searchable) |
-| GET | `/api/admin/users/:id` | Full `AdminUserDetail` — profile, toolset catalog + state, skill catalog + `enabledSkills`, jobs, usage |
-| PATCH | `/api/admin/users/:id` | Update `model`, `instructions`, `status`, `enabledToolsets`, `enabledSkills` |
+| GET | `/api/admin/users/:id` | Full `AdminUserDetail` — profile, toolset catalog + state, skill catalog + `enabledSkills`, Composio catalog + `composioEnabled`/`composioToolkits`, jobs, usage |
+| PATCH | `/api/admin/users/:id` | Update `model`, `instructions`, `status`, `enabledToolsets`, `enabledSkills`, `composioEnabled`, `composioToolkits` |
 | POST | `/api/admin/users/:id/topup` | Add credits (`hasToppedUp` → true) |
-| POST | `/api/admin/invite` | Create a user; optional `startingCredits` + agent profile (`model`, `instructions`, `enabledToolsets`, `enabledSkills`) |
+| POST | `/api/admin/invite` | Create a user; optional `startingCredits` + agent profile (`model`, `instructions`, `enabledToolsets`, `enabledSkills`, `composioEnabled`, `composioToolkits`) |
 | PATCH | `/api/admin/users/:id/tier` | Set `tier` (`free`/`dedicated`) + optional `dedicatedGatewayId` |
 | GET | `/api/admin/jobs` | All users' scheduled (cron) jobs |
 | POST | `/api/admin/jobs/:id/:action` | `pause` / `resume` / `run` a job |
@@ -62,9 +62,10 @@ All `/api/admin/mcp-servers` routes proxy to the resolved gateway's new `/api/mc
 - `Overview.tsx` — stat cards + 14-day **credit-consumption** chart + "needs attention" + activity feed.
 - `UsersTable.tsx` — user list with filters (all / low / depleted / suspended); a **Free** badge when
   `!hasToppedUp`.
-- `UserDrawer.tsx` — the per-user **agent editor** (model, persona, MCP toggles, skill toggles) + credit
-  balance + usage sparkline + suspend/reactivate. See
-  [per-user-agent-profile.md](./per-user-agent-profile.md).
+- `UserDrawer.tsx` — the per-user **agent editor** (model, persona, MCP toggles, skill toggles,
+  **Composio third-party apps** enable + per-toolkit allowlist) + credit balance + usage sparkline +
+  suspend/reactivate. See [per-user-agent-profile.md](./per-user-agent-profile.md) and
+  [composio-third-party-apps.md](./composio-third-party-apps.md).
 - `Billing.tsx` — per-user balances + top-up.
 - `JobsTable.tsx` — cron jobs across users.
 - `McpServers.tsx` / `McpServerModal.tsx` — global MCP server list + add (remote https only). Added

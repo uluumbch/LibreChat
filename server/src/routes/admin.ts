@@ -8,6 +8,7 @@ import type {
   AdminUser,
   AdminUserDetail,
   AdminUserToolset,
+  ComposioToolkit,
   SkillOption,
 } from '@hermes/shared';
 import { prisma } from '../db';
@@ -20,6 +21,25 @@ import { toApiUser, toCreditBalance } from '../users/profile';
 import { provisionDefaults } from '../users/provision';
 import { aggregateUsage, dailyUsageSeries } from '../billing/usage';
 import { JOB_NAME_RE, toJobSummary, userJobPrefix, userJobTag } from '../jobs/scope';
+import { COMPOSIO_CATALOG, COMPOSIO_SLUGS, isCatalogSlug } from '../composio/catalog';
+
+/** Admin-supplied Composio toolkit allowlist, validated against the catalog. */
+const composioToolkitsField = z
+  .array(z.string().max(64))
+  .max(COMPOSIO_SLUGS.length)
+  .refine((arr) => arr.every(isCatalogSlug), { message: 'Unknown Composio toolkit' })
+  .optional();
+
+/** Build the per-user Composio catalog (admin view: `allowed` reflects the grant). */
+function composioCatalogFor(allowed: string[]): ComposioToolkit[] {
+  const granted = new Set(allowed);
+  return COMPOSIO_CATALOG.map((t) => ({
+    slug: t.slug,
+    name: t.name,
+    allowed: granted.has(t.slug),
+    connected: false,
+  }));
+}
 
 const tierBody = z.object({
   tier: z.enum(['free', 'dedicated']),
@@ -227,6 +247,9 @@ adminRouter.get(
       toolsets,
       skills,
       enabledSkills: user.enabledSkills,
+      composioEnabled: user.composioEnabled,
+      composioToolkits: user.composioToolkits,
+      composioCatalog: composioCatalogFor(user.composioToolkits),
       jobs,
       usage,
     };
@@ -240,6 +263,8 @@ const updateBody = z.object({
   status: z.enum(['ACTIVE', 'SUSPENDED']).optional(),
   enabledToolsets: z.array(z.string().max(80)).max(64).optional(),
   enabledSkills: z.array(z.string().max(80)).max(64).optional(),
+  composioEnabled: z.boolean().optional(),
+  composioToolkits: composioToolkitsField,
 });
 
 adminRouter.patch(
@@ -262,6 +287,8 @@ adminRouter.patch(
         ...(input.status !== undefined ? { status: input.status } : {}),
         ...(input.enabledToolsets !== undefined ? { enabledToolsets: input.enabledToolsets } : {}),
         ...(input.enabledSkills !== undefined ? { enabledSkills: input.enabledSkills } : {}),
+        ...(input.composioEnabled !== undefined ? { composioEnabled: input.composioEnabled } : {}),
+        ...(input.composioToolkits !== undefined ? { composioToolkits: input.composioToolkits } : {}),
       },
     });
     const count = await prisma.conversation.count({ where: { userId: id } });
@@ -298,6 +325,8 @@ const inviteBody = z.object({
   instructions: z.string().max(8000).nullable().optional(),
   enabledToolsets: z.array(z.string().max(80)).max(64).optional(),
   enabledSkills: z.array(z.string().max(80)).max(64).optional(),
+  composioEnabled: z.boolean().optional(),
+  composioToolkits: composioToolkitsField,
 });
 
 adminRouter.post(
@@ -322,6 +351,8 @@ adminRouter.post(
         ...(input.instructions !== undefined ? { instructions: input.instructions } : {}),
         ...(input.enabledToolsets !== undefined ? { enabledToolsets: input.enabledToolsets } : {}),
         ...(input.enabledSkills !== undefined ? { enabledSkills: input.enabledSkills } : {}),
+        ...(input.composioEnabled !== undefined ? { composioEnabled: input.composioEnabled } : {}),
+        ...(input.composioToolkits !== undefined ? { composioToolkits: input.composioToolkits } : {}),
       },
     });
     res.status(201).json(toAdminUser(user, 0));

@@ -19,6 +19,8 @@ export function toHermesProfile(user: DbUser): HermesProfile {
     memoryEnabled: user.memoryEnabled,
     enabledToolsets: user.enabledToolsets,
     enabledSkills: user.enabledSkills,
+    composioEnabled: user.composioEnabled,
+    composioToolkits: user.composioToolkits,
   };
 }
 

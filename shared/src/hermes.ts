@@ -65,6 +65,14 @@ export interface HermesSessionChatRequest {
    * Omit/empty = no restriction. See docs/per-user-agent-profile.md.
    */
   allowed_skills?: string[];
+  /**
+   * Composio user id (the LibreChatHermes DB user id). When set, the gateway
+   * offers the per-user `composio` toolset and scopes all third-party actions to
+   * this user's connected accounts. Omit = no Composio this turn.
+   */
+  composio_user_id?: string;
+  /** Composio toolkit allowlist (admin-granted ∩ user-connected) for this turn. */
+  composio_toolkits?: string[];
 }
 
 export interface HermesUsageTokens {
@@ -193,6 +201,10 @@ export interface HermesRunRequest {
   allowed_toolsets?: string[];
   /** Per-run skill allowlist (see HermesSessionChatRequest.allowed_skills). */
   allowed_skills?: string[];
+  /** Composio user id (see HermesSessionChatRequest.composio_user_id). */
+  composio_user_id?: string;
+  /** Composio toolkit allowlist (see HermesSessionChatRequest.composio_toolkits). */
+  composio_toolkits?: string[];
 }
 
 export interface HermesRunCreatedResponse {

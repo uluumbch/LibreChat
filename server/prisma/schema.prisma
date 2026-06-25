@@ -38,6 +38,10 @@ model User {
   enabledToolsets String[] @default([]) @map("enabled_toolsets")
   enabledSkills   String[] @default([]) @map("enabled_skills")
 
+  // Composio third-party apps (gateway-bridged connected accounts).
+  composioEnabled  Boolean  @default(false) @map("composio_enabled")
+  composioToolkits String[] @default([])    @map("composio_toolkits")
+
   refreshTokens RefreshToken[]
   conversations Conversation[]
   messages      Message[]
