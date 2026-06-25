@@ -5,13 +5,17 @@ import type {
   AdminActivityEvent,
   AdminJob,
   AdminOverview,
+  AdminSlashCommand,
   AdminUser,
+  AdminUserCommand,
   AdminUserDetail,
   AdminUserToolset,
   AdminComposioToolkit,
   ComposioToolkit,
+  ServerActionKey,
   SkillOption,
 } from '@hermes/shared';
+import { SERVER_ACTION_KEYS } from '@hermes/shared';
 import { prisma } from '../db';
 import { config } from '../config';
 import { logger } from '../logger';
@@ -24,6 +28,7 @@ import { provisionDefaults } from '../users/provision';
 import { aggregateUsage, dailyUsageSeries } from '../billing/usage';
 import { JOB_NAME_RE, toJobSummary, userJobPrefix, userJobTag } from '../jobs/scope';
 import { getEnabledSlugs, getEnabledToolkits } from '../composio/catalog';
+import { getEnabledCommands } from '../commands/catalog';
 import { composio } from '../composio/client';
 
 /** Admin-supplied Composio toolkit allowlist (validated against the enabled set in the handler). */
@@ -48,6 +53,31 @@ async function composioCatalogFor(granted: string[]): Promise<ComposioToolkit[]>
     name: t.name,
     allowed: grantedSet.has(t.slug),
     connected: false,
+  }));
+}
+
+/** Admin-supplied slash-command allowlist (validated against the enabled set in the handler). */
+const enabledCommandsField = z.array(z.string().max(64)).max(200).optional();
+
+/** Reject a per-user grant that includes a command not enabled product-wide. */
+async function assertCommandsEnabled(names: string[] | undefined): Promise<void> {
+  if (!names || names.length === 0) return;
+  const enabled = new Set((await getEnabledCommands()).map((c) => c.name));
+  const bad = names.filter((n) => !enabled.has(n));
+  if (bad.length > 0) {
+    throw badRequest(`Command(s) not enabled: ${bad.join(', ')}`, 'command_not_enabled');
+  }
+}
+
+/** Build the per-user command catalog (admin view: only globally-enabled commands; `allowed` = the grant). */
+async function commandCatalogFor(granted: string[]): Promise<AdminUserCommand[]> {
+  const grantedSet = new Set(granted);
+  const enabled = await getEnabledCommands();
+  return enabled.map((c) => ({
+    name: c.name,
+    description: c.description,
+    type: c.type,
+    allowed: grantedSet.has(c.name),
   }));
 }
 
@@ -243,13 +273,14 @@ adminRouter.get(
     if (!user) {
       throw notFound('User not found');
     }
-    const [count, toolsets, skills, jobs, usage, composioCatalog] = await Promise.all([
+    const [count, toolsets, skills, jobs, usage, composioCatalog, commandCatalog] = await Promise.all([
       prisma.conversation.count({ where: { userId: id } }),
       userToolsets(user),
       userSkills(),
       userJobs(id),
       userUsage(id),
       composioCatalogFor(user.composioToolkits),
+      commandCatalogFor(user.enabledCommands),
     ]);
     const detail: AdminUserDetail = {
       ...toAdminUser(user, count),
@@ -261,6 +292,8 @@ adminRouter.get(
       composioEnabled: user.composioEnabled,
       composioToolkits: user.composioToolkits,
       composioCatalog,
+      commandCatalog,
+      enabledCommands: user.enabledCommands,
       jobs,
       usage,
     };
@@ -276,6 +309,7 @@ const updateBody = z.object({
   enabledSkills: z.array(z.string().max(80)).max(64).optional(),
   composioEnabled: z.boolean().optional(),
   composioToolkits: composioToolkitsField,
+  enabledCommands: enabledCommandsField,
 });
 
 adminRouter.patch(
@@ -287,6 +321,7 @@ adminRouter.patch(
       throw badRequest(`Unknown model: ${input.model}`, 'unknown_model');
     }
     await assertToolkitsEnabled(input.composioToolkits);
+    await assertCommandsEnabled(input.enabledCommands);
     const exists = await prisma.user.findUnique({ where: { id }, select: { id: true } });
     if (!exists) {
       throw notFound('User not found');
@@ -301,6 +336,7 @@ adminRouter.patch(
         ...(input.enabledSkills !== undefined ? { enabledSkills: input.enabledSkills } : {}),
         ...(input.composioEnabled !== undefined ? { composioEnabled: input.composioEnabled } : {}),
         ...(input.composioToolkits !== undefined ? { composioToolkits: input.composioToolkits } : {}),
+        ...(input.enabledCommands !== undefined ? { enabledCommands: input.enabledCommands } : {}),
       },
     });
     const count = await prisma.conversation.count({ where: { userId: id } });
@@ -575,5 +611,135 @@ adminRouter.patch(
       }
     }
     res.json({ slug, enabled: false, disconnected, revokedFrom });
+  }),
+);
+
+// ── Slash command catalog (curated) ──────────────────────────────────────────
+// Admin curates the commands that exist product-wide; only enabled ones are usable
+// (and grantable per user via User.enabledCommands). Three kinds: prompt template,
+// skill/tool scope, and coded server action.
+
+function toAdminCommand(
+  row: {
+    id: string;
+    name: string;
+    description: string;
+    type: string;
+    enabled: boolean;
+    promptTemplate: string | null;
+    scopeToolsets: string[];
+    scopeSkills: string[];
+    promptPrefix: string | null;
+    actionKey: string | null;
+    sortOrder: number;
+  },
+  grantCount: number,
+): AdminSlashCommand {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    type: row.type as AdminSlashCommand['type'],
+    enabled: row.enabled,
+    promptTemplate: row.promptTemplate,
+    scopeToolsets: row.scopeToolsets,
+    scopeSkills: row.scopeSkills,
+    promptPrefix: row.promptPrefix,
+    actionKey: (row.actionKey as ServerActionKey | null) ?? null,
+    sortOrder: row.sortOrder,
+    grantCount,
+  };
+}
+
+adminRouter.get(
+  '/commands',
+  asyncHandler(async (_req, res) => {
+    const rows = await prisma.slashCommand.findMany({
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+    });
+    const counts = new Map<string, number>();
+    await Promise.all(
+      rows.map(async (r) => {
+        counts.set(r.name, await prisma.user.count({ where: { enabledCommands: { has: r.name } } }));
+      }),
+    );
+    res.json({ items: rows.map((r) => toAdminCommand(r, counts.get(r.name) ?? 0)) });
+  }),
+);
+
+const upsertCommandBody = z
+  .object({
+    id: z.string().uuid().optional(),
+    name: z
+      .string()
+      .min(1)
+      .max(64)
+      .regex(/^[a-z0-9][a-z0-9_-]*$/, 'Lowercase letters, numbers, dashes or underscores'),
+    description: z.string().min(1).max(280),
+    type: z.enum(['prompt', 'skill_scope', 'server_action']),
+    enabled: z.boolean().optional(),
+    promptTemplate: z.string().max(8000).nullable().optional(),
+    scopeToolsets: z.array(z.string().max(80)).max(64).optional(),
+    scopeSkills: z.array(z.string().max(80)).max(64).optional(),
+    promptPrefix: z.string().max(4000).nullable().optional(),
+    actionKey: z.enum(SERVER_ACTION_KEYS).nullable().optional(),
+    sortOrder: z.number().int().min(0).max(100000).optional(),
+  })
+  .refine((b) => b.type !== 'prompt' || (b.promptTemplate?.trim().length ?? 0) > 0, {
+    message: 'Prompt commands need a template',
+    path: ['promptTemplate'],
+  })
+  .refine((b) => b.type !== 'server_action' || !!b.actionKey, {
+    message: 'Server-action commands need an action',
+    path: ['actionKey'],
+  });
+
+adminRouter.post(
+  '/commands',
+  asyncHandler(async (req, res) => {
+    const input = upsertCommandBody.parse(req.body);
+    const data = {
+      name: input.name.toLowerCase(),
+      description: input.description,
+      type: input.type,
+      enabled: input.enabled ?? true,
+      promptTemplate: input.type === 'prompt' ? input.promptTemplate ?? null : null,
+      scopeToolsets: input.type === 'skill_scope' ? input.scopeToolsets ?? [] : [],
+      scopeSkills: input.type === 'skill_scope' ? input.scopeSkills ?? [] : [],
+      promptPrefix: input.type === 'skill_scope' ? input.promptPrefix ?? null : null,
+      actionKey: input.type === 'server_action' ? input.actionKey ?? null : null,
+      sortOrder: input.sortOrder ?? 0,
+    };
+    try {
+      const row = input.id
+        ? await prisma.slashCommand.update({ where: { id: input.id }, data })
+        : await prisma.slashCommand.create({ data });
+      res.status(input.id ? 200 : 201).json(toAdminCommand(row, 0));
+    } catch (err) {
+      if (err && typeof err === 'object' && (err as { code?: string }).code === 'P2002') {
+        throw badRequest(`A command named /${data.name} already exists`, 'command_name_taken');
+      }
+      throw err;
+    }
+  }),
+);
+
+adminRouter.delete(
+  '/commands/:id',
+  asyncHandler(async (req, res) => {
+    const id = requireParam(req, 'id');
+    const row = await prisma.slashCommand.findUnique({ where: { id }, select: { name: true } });
+    if (!row) {
+      throw notFound('Command not found');
+    }
+    // Delete the command and strip its name from every user's per-user allowlist.
+    await prisma.$transaction([
+      prisma.slashCommand.delete({ where: { id } }),
+      prisma.$executeRaw`
+        UPDATE "users"
+        SET enabled_commands = array_remove(enabled_commands, ${row.name})
+        WHERE ${row.name} = ANY(enabled_commands)`,
+    ]);
+    res.status(204).end();
   }),
 );

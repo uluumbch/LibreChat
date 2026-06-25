@@ -15,9 +15,13 @@ import type {
   ConversationUsage,
   CreateConversationRequest,
   AdminComposioToolkitsResponse,
+  AdminSlashCommand,
+  AdminSlashCommandsResponse,
   ComposioConnectResponse,
   ComposioToolkitsResponse,
   CreateJobRequest,
+  UpsertSlashCommandRequest,
+  UserSlashCommandsResponse,
   CreateMcpServerRequest,
   CursorPage,
   InviteUserRequest,
@@ -377,5 +381,49 @@ export function useDisconnectComposio() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.composioToolkits });
     },
+  });
+}
+
+/* --------------------------- Slash commands (curated) --------------------------- */
+
+/** The curated commands available to the signed-in user — drives the composer autocomplete. */
+export function useCommands() {
+  return useQuery({
+    queryKey: queryKeys.commands,
+    queryFn: () => apiRequest<UserSlashCommandsResponse>('GET', '/api/commands'),
+    staleTime: 30 * 1000,
+  });
+}
+
+export function useAdminCommands() {
+  return useQuery({
+    queryKey: queryKeys.adminCommands,
+    queryFn: () => apiRequest<AdminSlashCommandsResponse>('GET', '/api/admin/commands'),
+    staleTime: 15 * 1000,
+  });
+}
+
+/** After a catalog change, refresh the admin catalog, the admin branch (open UserDrawer
+ *  grant list), and the per-user command list. */
+function invalidateCommands(queryClient: ReturnType<typeof useQueryClient>): void {
+  void queryClient.invalidateQueries({ queryKey: queryKeys.adminCommands });
+  void queryClient.invalidateQueries({ queryKey: ['admin'] });
+  void queryClient.invalidateQueries({ queryKey: queryKeys.commands });
+}
+
+export function useUpsertSlashCommand() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpsertSlashCommandRequest) =>
+      apiRequest<AdminSlashCommand>('POST', '/api/admin/commands', body),
+    onSuccess: () => invalidateCommands(queryClient),
+  });
+}
+
+export function useDeleteSlashCommand() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiRequest<void>('DELETE', `/api/admin/commands/${id}`),
+    onSuccess: () => invalidateCommands(queryClient),
   });
 }

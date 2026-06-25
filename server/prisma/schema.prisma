@@ -42,6 +42,10 @@ model User {
   composioEnabled  Boolean  @default(false) @map("composio_enabled")
   composioToolkits String[] @default([])    @map("composio_toolkits")
 
+  // Curated slash commands the user may use. RESTRICT-ONLY like enabledSkills:
+  // empty = inherit all globally-enabled commands; non-empty = allowlist (by name).
+  enabledCommands  String[] @default([])    @map("enabled_commands")
+
   refreshTokens RefreshToken[]
   conversations Conversation[]
   messages      Message[]
@@ -117,4 +121,27 @@ model ComposioToolkit {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@map("composio_toolkits")
+}
+
+// A curated slash command the admin defines product-wide. Three kinds (see `type`):
+//   prompt        — expands `promptTemplate` ({{args}} placeholder) into the turn message.
+//   skill_scope   — overrides allowed toolsets/skills for the turn + optional promptPrefix.
+//   server_action — server returns a fixed/queried reply (no LLM), keyed by `actionKey`.
+// Globally enabled commands are available to all users; per-user allowlist via User.enabledCommands.
+model SlashCommand {
+  id             String   @id @default(uuid()) @db.Uuid
+  name           String   @unique // trigger token, no leading slash, lowercase: "summarize"
+  description    String
+  type           String // "prompt" | "skill_scope" | "server_action"
+  enabled        Boolean  @default(true) @map("enabled")
+  promptTemplate String?  @map("prompt_template")
+  scopeToolsets  String[] @default([]) @map("scope_toolsets")
+  scopeSkills    String[] @default([]) @map("scope_skills")
+  promptPrefix   String?  @map("prompt_prefix")
+  actionKey      String?  @map("action_key")
+  sortOrder      Int      @default(0) @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("slash_commands")
 }

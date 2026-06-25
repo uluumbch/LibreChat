@@ -1,8 +1,10 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, ClipboardEvent, DragEvent, KeyboardEvent } from 'react';
 import clsx from 'clsx';
-import type { ChatImageInput } from '@hermes/shared';
+import type { ChatImageInput, UserSlashCommand } from '@hermes/shared';
 import { Spinner } from '~/components/ui';
+import { useCommands } from '~/data/queries';
+import { SlashCommandMenu } from '~/components/SlashCommandMenu';
 import { prepareImage } from '~/lib/image';
 import type { PreparedImage } from '~/lib/image';
 
@@ -28,6 +30,34 @@ export function Composer({
     () => typeof localStorage !== 'undefined' && localStorage.getItem(AGENTIC_KEY) === '1',
   );
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Curated slash commands: when the text is a bare `/token` (no space yet), offer matches.
+  const { data: commandsData } = useCommands();
+  const commands = commandsData?.items ?? [];
+  const [menuDismissed, setMenuDismissed] = useState(false);
+  const [selectedCommand, setSelectedCommand] = useState(0);
+
+  const commandQuery = useMemo(() => {
+    const match = /^\/(\S*)$/.exec(text);
+    return match ? match[1]!.toLowerCase() : null;
+  }, [text]);
+
+  const commandMatches = useMemo(
+    () => (commandQuery === null ? [] : commands.filter((c) => c.name.startsWith(commandQuery))),
+    [commandQuery, commands],
+  );
+
+  const menuOpen =
+    commandQuery !== null && commandMatches.length > 0 && !menuDismissed && !isStreaming;
+  const selIndex = Math.min(selectedCommand, Math.max(0, commandMatches.length - 1));
+
+  const pickCommand = (command: UserSlashCommand) => {
+    setText(`/${command.name} `);
+    setMenuDismissed(true);
+    setSelectedCommand(0);
+    textareaRef.current?.focus();
+  };
 
   const toggleAgentic = () => {
     setAgentic((prev) => {
@@ -105,6 +135,28 @@ export function Composer({
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (menuOpen) {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        setSelectedCommand((s) => (s + 1) % commandMatches.length);
+        return;
+      }
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        setSelectedCommand((s) => (s - 1 + commandMatches.length) % commandMatches.length);
+        return;
+      }
+      if (event.key === 'Enter' || event.key === 'Tab') {
+        event.preventDefault();
+        pickCommand(commandMatches[selIndex]!);
+        return;
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setMenuDismissed(true);
+        return;
+      }
+    }
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       submit();
@@ -145,7 +197,10 @@ export function Composer({
           )}
         </div>
 
-        <div className="rounded-[16px] border border-black/[0.09] bg-white shadow-[0_2px_10px_rgba(0,0,0,0.04)] transition focus-within:border-brand/50 focus-within:ring-2 focus-within:ring-brand/10">
+        <div className="relative rounded-[16px] border border-black/[0.09] bg-white shadow-[0_2px_10px_rgba(0,0,0,0.04)] transition focus-within:border-brand/50 focus-within:ring-2 focus-within:ring-brand/10">
+          {menuOpen && (
+            <SlashCommandMenu items={commandMatches} selectedIndex={selIndex} onPick={pickCommand} />
+          )}
           {(images.length > 0 || preparing) && (
             <div className="flex flex-wrap gap-2 px-3 pt-3">
               {images.map((image, index) => (
@@ -197,8 +252,13 @@ export function Composer({
               </svg>
             </button>
             <textarea
+              ref={textareaRef}
               value={text}
-              onChange={(event) => setText(event.target.value)}
+              onChange={(event) => {
+                setText(event.target.value);
+                setMenuDismissed(false);
+                setSelectedCommand(0);
+              }}
               onKeyDown={onKeyDown}
               onPaste={onPaste}
               rows={1}

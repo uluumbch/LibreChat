@@ -19,6 +19,7 @@ import { Billing } from '~/components/admin/Billing';
 import { JobsTable } from '~/components/admin/JobsTable';
 import { McpServers } from '~/components/admin/McpServers';
 import { ComposioToolkits } from '~/components/admin/ComposioToolkits';
+import { SlashCommands } from '~/components/admin/SlashCommands';
 import { UserDrawer } from '~/components/admin/UserDrawer';
 import { TopupModal } from '~/components/admin/TopupModal';
 import { InviteModal } from '~/components/admin/InviteModal';
@@ -28,6 +29,7 @@ import {
   CheckIcon,
   ClockIcon,
   CreditsIcon,
+  CommandIcon,
   OverviewIcon,
   PlugIcon,
   SearchIcon,
@@ -35,9 +37,9 @@ import {
   UsersIcon,
 } from '~/components/admin/icons';
 
-type View = 'overview' | 'users' | 'billing' | 'jobs' | 'mcp' | 'composio';
+type View = 'overview' | 'users' | 'billing' | 'jobs' | 'mcp' | 'composio' | 'commands';
 
-const VIEWS: readonly View[] = ['overview', 'users', 'billing', 'jobs', 'mcp', 'composio'];
+const VIEWS: readonly View[] = ['overview', 'users', 'billing', 'jobs', 'mcp', 'composio', 'commands'];
 
 function isView(value: string | undefined): value is View {
   return value != null && (VIEWS as readonly string[]).includes(value);
@@ -55,6 +57,7 @@ const TITLES: Record<View, [string, string]> = {
   jobs: ['Scheduled jobs', 'All cron jobs running across user agents'],
   mcp: ['MCP servers', 'Global MCP connectors available to user agents'],
   composio: ['Composio toolkits', 'Third-party apps users can connect to'],
+  commands: ['Slash commands', 'Curated `/` commands users can run in the composer'],
 };
 
 const NAV: Array<{ key: View; label: string; icon: ReactNode }> = [
@@ -64,6 +67,7 @@ const NAV: Array<{ key: View; label: string; icon: ReactNode }> = [
   { key: 'jobs', label: 'Scheduled jobs', icon: <ClockIcon /> },
   { key: 'mcp', label: 'MCP servers', icon: <ShieldIcon size={16} /> },
   { key: 'composio', label: 'Composio toolkits', icon: <PlugIcon size={16} /> },
+  { key: 'commands', label: 'Slash commands', icon: <CommandIcon size={16} /> },
 ];
 
 export default function AdminPage(): JSX.Element {
@@ -397,6 +401,7 @@ export default function AdminPage(): JSX.Element {
             )}
             {view === 'mcp' && <McpServers onFlash={flash} />}
             {view === 'composio' && <ComposioToolkits onFlash={flash} />}
+            {view === 'commands' && <SlashCommands onFlash={flash} />}
           </div>
         </div>
       </div>

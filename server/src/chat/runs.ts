@@ -25,6 +25,11 @@ export interface RunsChatTurnParams {
   conversationId: string;
   text: string;
   res: Response;
+  /** When set (expanded prompt command), sent to the gateway instead of `text`. */
+  gatewayText?: string;
+  /** Per-turn toolset/skill allowlists (skill-scope command) — replace user defaults. */
+  overrideToolsets?: string[];
+  overrideSkills?: string[];
 }
 
 interface ActiveRun {
@@ -41,7 +46,7 @@ const activeRuns = new Map<string, ActiveRun>();
  * resolves the gate via respondToApproval(), Hermes resumes, and more events flow on the same stream.
  */
 export async function runChatTurnViaRuns(params: RunsChatTurnParams): Promise<void> {
-  const { userId, conversationId, text, res } = params;
+  const { userId, conversationId, text, res, gatewayText, overrideToolsets, overrideSkills } = params;
 
   const ctx = await loadTurnContext(userId, conversationId);
   const sessionId = await ensureSession(ctx);
@@ -77,13 +82,13 @@ export async function runChatTurnViaRuns(params: RunsChatTurnParams): Promise<vo
   try {
     const created = await ctx.pooled.client.createRun(
       {
-        input: text,
+        input: gatewayText ?? text,
         instructions: ctx.user.instructions ?? undefined,
         session_id: sessionId,
         conversation_history: history,
         model: ctx.pooled.model,
-        allowed_toolsets: ctx.user.enabledToolsets.length > 0 ? ctx.user.enabledToolsets : undefined,
-        allowed_skills: ctx.user.enabledSkills.length > 0 ? ctx.user.enabledSkills : undefined,
+        allowed_toolsets: overrideToolsets ?? (ctx.user.enabledToolsets.length > 0 ? ctx.user.enabledToolsets : undefined),
+        allowed_skills: overrideSkills ?? (ctx.user.enabledSkills.length > 0 ? ctx.user.enabledSkills : undefined),
         ...composioTurnFields(ctx.user, userId),
       },
       { sessionKey: sessionKeyFor(userId) },

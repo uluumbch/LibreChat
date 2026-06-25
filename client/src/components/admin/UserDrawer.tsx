@@ -49,6 +49,62 @@ function Toggle({ on, onClick }: { on: boolean; onClick: () => void }): JSX.Elem
   );
 }
 
+function TabButton({
+  active,
+  label,
+  badge,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  badge?: number;
+  onClick: () => void;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      style={{
+        flex: 1,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        padding: '11px 8px',
+        background: 'transparent',
+        border: 'none',
+        borderBottom: active ? `2px solid ${ACCENT}` : '2px solid transparent',
+        color: active ? '#18181b' : '#a1a1aa',
+        fontSize: 13,
+        fontWeight: active ? 600 : 500,
+        cursor: 'pointer',
+        transition: 'color .15s',
+        marginBottom: -1,
+      }}
+    >
+      {label}
+      {badge !== undefined && badge > 0 && (
+        <span
+          style={{
+            fontFamily: MONO,
+            fontSize: 10.5,
+            fontWeight: 600,
+            color: active ? ACCENT : '#a1a1aa',
+            background: active ? 'rgba(91,84,232,0.1)' : '#f4f4f6',
+            borderRadius: 999,
+            padding: '1px 6px',
+            lineHeight: 1.5,
+          }}
+        >
+          {badge}
+        </span>
+      )}
+    </button>
+  );
+}
+
 export function UserDrawer({
   userId,
   onClose,
@@ -71,6 +127,8 @@ export function UserDrawer({
   const [skills, setSkills] = useState<SkillToggle[]>([]);
   const [composioEnabled, setComposioEnabled] = useState(false);
   const [composioApps, setComposioApps] = useState<{ slug: string; name: string; allowed: boolean }[]>([]);
+  const [commands, setCommands] = useState<{ name: string; description: string; allowed: boolean }[]>([]);
+  const [tab, setTab] = useState<'overview' | 'profile' | 'tools' | 'apps'>('overview');
 
   useEffect(() => {
     if (detail) {
@@ -89,6 +147,13 @@ export function UserDrawer({
       setComposioApps(
         detail.composioCatalog.map((t) => ({ slug: t.slug, name: t.name, allowed: t.allowed })),
       );
+      setCommands(
+        detail.commandCatalog.map((c) => ({
+          name: c.name,
+          description: c.description,
+          allowed: c.allowed,
+        })),
+      );
     }
   }, [detail]);
 
@@ -102,6 +167,7 @@ export function UserDrawer({
 
   const enabledCount = toolsets.filter((t) => t.enabled).length;
   const enabledSkillCount = skills.filter((s) => s.enabled).length;
+  const enabledCommandCount = commands.filter((c) => c.allowed).length;
 
   const save = async () => {
     await updateUser.mutateAsync({
@@ -113,6 +179,7 @@ export function UserDrawer({
         enabledSkills: skills.filter((s) => s.enabled).map((s) => s.name),
         composioEnabled,
         composioToolkits: composioApps.filter((a) => a.allowed).map((a) => a.slug),
+        enabledCommands: commands.filter((c) => c.allowed).map((c) => c.name),
       },
     });
     onFlash('Agent profile saved');
@@ -215,7 +282,32 @@ export function UserDrawer({
               </div>
             </div>
 
-            <div style={{ padding: '20px 24px 40px' }}>
+            <div
+              role="tablist"
+              style={{
+                display: 'flex',
+                padding: '0 12px',
+                borderBottom: '1px solid #ebebef',
+                position: 'sticky',
+                top: 91,
+                background: '#fff',
+                zIndex: 2,
+              }}
+            >
+              <TabButton active={tab === 'overview'} label="Overview" onClick={() => setTab('overview')} />
+              <TabButton active={tab === 'profile'} label="Profile" onClick={() => setTab('profile')} />
+              <TabButton
+                active={tab === 'tools'}
+                label="Tools"
+                badge={enabledCount + enabledSkillCount + enabledCommandCount}
+                onClick={() => setTab('tools')}
+              />
+              <TabButton active={tab === 'apps'} label="Apps" onClick={() => setTab('apps')} />
+            </div>
+
+            <div style={{ padding: '20px 24px 28px' }}>
+              {tab === 'overview' && (
+                <>
               <div
                 style={{
                   background: 'linear-gradient(180deg,rgba(91,84,232,0.06),rgba(91,84,232,0.02))',
@@ -327,6 +419,11 @@ export function UserDrawer({
                 </div>
               </div>
 
+                </>
+              )}
+
+              {tab === 'profile' && (
+                <>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, color: ACCENT }}>
                 <ShieldIcon size={15} />
                 <h3
@@ -389,6 +486,11 @@ export function UserDrawer({
                 </div>
               </div>
 
+                </>
+              )}
+
+              {tab === 'tools' && (
+                <>
               <div style={{ marginBottom: 20 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 }}>
                   <label style={{ fontSize: 12.5, fontWeight: 550, color: '#3f3f46' }}>MCP servers</label>
@@ -528,6 +630,83 @@ export function UserDrawer({
                 </div>
               )}
 
+              {commands.length > 0 && (
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 }}>
+                    <label style={{ fontSize: 12.5, fontWeight: 550, color: '#3f3f46' }}>Slash commands</label>
+                    <span style={{ fontSize: 11.5, color: '#a1a1aa' }}>
+                      {enabledCommandCount} of {commands.length} enabled
+                    </span>
+                  </div>
+                  <div style={{ border: '1px solid #ebebef', borderRadius: 12, overflow: 'hidden' }}>
+                    {commands.map((command, i) => (
+                      <div
+                        key={command.name}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 11,
+                          padding: '11px 13px',
+                          borderBottom: i === commands.length - 1 ? 'none' : '1px solid #f4f4f6',
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: 7,
+                            background: 'rgba(91,84,232,0.1)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontFamily: MONO,
+                            fontSize: 13,
+                            fontWeight: 700,
+                            color: ACCENT,
+                            flex: 'none',
+                          }}
+                        >
+                          /
+                        </span>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontFamily: MONO, fontSize: 13, fontWeight: 500, color: '#27272a' }}>
+                            /{command.name}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 11,
+                              color: '#a1a1aa',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            }}
+                          >
+                            {command.description}
+                          </div>
+                        </div>
+                        <Toggle
+                          on={command.allowed}
+                          onClick={() =>
+                            setCommands((prev) =>
+                              prev.map((c) =>
+                                c.name === command.name ? { ...c, allowed: !c.allowed } : c,
+                              ),
+                            )
+                          }
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <p style={{ margin: '8px 0 0', fontSize: 11, color: '#a1a1aa', lineHeight: 1.5 }}>
+                    Leave all off to grant every enabled command (no restriction).
+                  </p>
+                </div>
+              )}
+
+                </>
+              )}
+
+              {tab === 'apps' && (
               <div style={{ marginBottom: 20 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 }}>
                   <label style={{ fontSize: 12.5, fontWeight: 550, color: '#3f3f46' }}>
@@ -587,8 +766,9 @@ export function UserDrawer({
                   </div>
                 )}
               </div>
+              )}
 
-              {detail.jobs.length > 0 && (
+              {tab === 'overview' && detail.jobs.length > 0 && (
                 <div style={{ marginBottom: 20 }}>
                   <label style={{ display: 'block', fontSize: 12.5, fontWeight: 550, color: '#3f3f46', marginBottom: 9 }}>
                     Scheduled jobs
@@ -634,7 +814,8 @@ export function UserDrawer({
                 </div>
               )}
 
-              <div style={{ marginBottom: 24 }}>
+              {tab === 'profile' && (
+              <div style={{ marginBottom: 4 }}>
                 <label style={{ display: 'block', fontSize: 12.5, fontWeight: 550, color: '#3f3f46', marginBottom: 7 }}>
                   Persona &amp; instructions
                 </label>
@@ -658,8 +839,22 @@ export function UserDrawer({
                   }}
                 />
               </div>
+              )}
+            </div>
 
-              <div style={{ display: 'flex', gap: 9, alignItems: 'center' }}>
+            <div
+              style={{
+                display: 'flex',
+                gap: 9,
+                alignItems: 'center',
+                padding: '14px 24px',
+                borderTop: '1px solid #ebebef',
+                position: 'sticky',
+                bottom: 0,
+                background: '#fff',
+                zIndex: 2,
+              }}
+            >
                 <button
                   type="button"
                   disabled={updateUser.isPending}
@@ -716,7 +911,6 @@ export function UserDrawer({
                   {detail.status === 'ACTIVE' ? 'Suspend user' : 'Reactivate user'}
                 </button>
               </div>
-            </div>
           </>
         )}
       </div>

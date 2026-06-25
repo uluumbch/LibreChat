@@ -1,13 +1,14 @@
 import crypto from 'node:crypto';
 import type { Response } from 'express';
-import type { ChatImageInput } from '@hermes/shared';
-import { ChatStreamEventType, HermesStreamEvent } from '@hermes/shared';
+import type { ChatImageInput, MessageContentPart } from '@hermes/shared';
+import { ChatStreamEventType, ContentPartType, HermesStreamEvent } from '@hermes/shared';
 import { prisma } from '../db';
 import { logger } from '../logger';
 import { HttpError, serviceBusy } from '../errors';
 import { sessionKeyFor } from '../users/provision';
 import { composioTurnFields } from '../composio/client';
 import { toApiMessage } from '../messages/mapper';
+import { toJsonInput } from '../json';
 import { SseWriter } from './sse';
 import { parseSse } from './parse';
 import { TurnAccumulator } from './translate';
@@ -26,6 +27,12 @@ export interface RunChatTurnParams {
   text: string;
   images?: ChatImageInput[];
   res: Response;
+  /** When set (e.g. an expanded prompt command), sent to the gateway instead of `text`; the
+   *  persisted user message still shows the typed `text`. */
+  gatewayText?: string;
+  /** Per-turn toolset/skill allowlists (e.g. a skill-scope command) — replace the user defaults. */
+  overrideToolsets?: string[];
+  overrideSkills?: string[];
 }
 
 /**
@@ -33,7 +40,8 @@ export interface RunChatTurnParams {
  * them into our normalized SSE protocol, and persists the assembled assistant message.
  */
 export async function runChatTurn(params: RunChatTurnParams): Promise<void> {
-  const { userId, conversationId, text, images, res } = params;
+  const { userId, conversationId, text, images, res, gatewayText, overrideToolsets, overrideSkills } =
+    params;
 
   const ctx = await loadTurnContext(userId, conversationId);
   const sessionId = await ensureSession(ctx);
@@ -67,10 +75,10 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<void> {
     const response = await ctx.pooled.client.chatStream(
       sessionId,
       {
-        message: toHermesMessage(text, images),
+        message: toHermesMessage(gatewayText ?? text, images),
         instructions: ctx.user.instructions ?? undefined,
-        allowed_toolsets: ctx.user.enabledToolsets.length > 0 ? ctx.user.enabledToolsets : undefined,
-        allowed_skills: ctx.user.enabledSkills.length > 0 ? ctx.user.enabledSkills : undefined,
+        allowed_toolsets: overrideToolsets ?? (ctx.user.enabledToolsets.length > 0 ? ctx.user.enabledToolsets : undefined),
+        allowed_skills: overrideSkills ?? (ctx.user.enabledSkills.length > 0 ? ctx.user.enabledSkills : undefined),
         ...composioTurnFields(ctx.user, userId),
       },
       { sessionKey: sessionKeyFor(userId), signal: controller.signal },
@@ -128,5 +136,64 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<void> {
       usage: accumulator.usage,
     });
   }
+  writer.close();
+}
+
+export interface ServerActionTurnParams {
+  userId: string;
+  conversationId: string;
+  /** The text the user typed (e.g. `/credits`), persisted as the user message. */
+  text: string;
+  /** The canned reply to stream back, persisted as the assistant message. */
+  replyText: string;
+  res: Response;
+}
+
+/**
+ * Run a `server_action` slash-command turn: persist the user message + a canned assistant reply
+ * and stream it as a normal chat turn — no gateway/LLM call, no credits, no Hermes session.
+ */
+export async function runServerActionTurn(params: ServerActionTurnParams): Promise<void> {
+  const { userId, conversationId, text, replyText, res } = params;
+
+  const ctx = await loadTurnContext(userId, conversationId);
+  const { userMessage, isFirstTurn } = await persistUserMessage(ctx, text);
+
+  const assistantId = crypto.randomUUID();
+  const writer = new SseWriter(res);
+  writer.send({
+    type: ChatStreamEventType.Created,
+    conversationId: ctx.conversation.id,
+    userMessageId: userMessage.id,
+    assistantMessageId: assistantId,
+  });
+
+  if (isFirstTurn && ctx.conversation.title === 'New Chat') {
+    const title = deriveTitle(text);
+    await prisma.conversation.update({ where: { id: ctx.conversation.id }, data: { title } });
+    writer.send({ type: ChatStreamEventType.Title, title });
+  }
+
+  const content: MessageContentPart[] = [{ type: ContentPartType.Text, text: replyText }];
+  const assistantMessage = await prisma.message.create({
+    data: {
+      id: assistantId,
+      conversationId: ctx.conversation.id,
+      userId: ctx.user.id,
+      role: 'assistant',
+      text: replyText,
+      content: toJsonInput(content),
+      parentMessageId: userMessage.id,
+      finishReason: 'stop',
+      error: false,
+    },
+  });
+  await prisma.conversation.update({
+    where: { id: ctx.conversation.id },
+    data: { updatedAt: new Date() },
+  });
+
+  writer.send({ type: ChatStreamEventType.Delta, text: replyText });
+  writer.send({ type: ChatStreamEventType.Final, message: toApiMessage(assistantMessage) });
   writer.close();
 }

@@ -70,6 +70,8 @@ export interface HermesProfile {
   composioEnabled: boolean;
   /** Toolkit slugs the admin permits this user to connect (e.g. ['googledrive']). */
   composioToolkits: string[];
+  /** Slash command names this user may use (empty = inherit all globally-enabled). */
+  enabledCommands: string[];
 }
 
 /** Admin-managed credit balance. `remaining = purchased - used`. */
@@ -298,6 +300,67 @@ export interface ToggleComposioToolkitRequest {
   name?: string;
 }
 
+/* --------------------------- Slash commands (curated) --------------------------- */
+
+/**
+ * What a custom slash command does:
+ * - `prompt`        — expands a template into the turn message.
+ * - `skill_scope`   — restricts toolsets/skills for the turn (+ optional prompt prefix).
+ * - `server_action` — server returns a fixed/queried reply, no LLM call.
+ */
+export type SlashCommandType = 'prompt' | 'skill_scope' | 'server_action';
+
+/** Coded server-action handlers an admin may attach to a `server_action` command. */
+export const SERVER_ACTION_KEYS = ['credits', 'help'] as const;
+export type ServerActionKey = (typeof SERVER_ACTION_KEYS)[number];
+
+/** A slash command as exposed to a user's composer autocomplete (no templates leaked). */
+export interface UserSlashCommand {
+  name: string;
+  description: string;
+  type: SlashCommandType;
+}
+
+export interface UserSlashCommandsResponse {
+  items: UserSlashCommand[];
+}
+
+/** A slash command in the admin catalog (full definition). */
+export interface AdminSlashCommand {
+  id: string;
+  name: string;
+  description: string;
+  type: SlashCommandType;
+  enabled: boolean;
+  promptTemplate: string | null;
+  scopeToolsets: string[];
+  scopeSkills: string[];
+  promptPrefix: string | null;
+  actionKey: ServerActionKey | null;
+  sortOrder: number;
+  /** How many users have this command in their per-user allowlist. */
+  grantCount: number;
+}
+
+export interface AdminSlashCommandsResponse {
+  items: AdminSlashCommand[];
+}
+
+/** Create/update payload for an admin slash command. `id` present = update. */
+export interface UpsertSlashCommandRequest {
+  id?: string;
+  name: string;
+  description: string;
+  type: SlashCommandType;
+  enabled?: boolean;
+  promptTemplate?: string | null;
+  scopeToolsets?: string[];
+  scopeSkills?: string[];
+  promptPrefix?: string | null;
+  actionKey?: ServerActionKey | null;
+  sortOrder?: number;
+}
+
 /* ----------------------------- Discovery DTOs ----------------------------- */
 
 export interface ModelOption {
@@ -401,8 +464,20 @@ export interface AdminUserDetail extends AdminUser {
   composioToolkits: string[];
   /** The full Composio toolkit catalog the admin can choose from. */
   composioCatalog: ComposioToolkit[];
+  /** Globally-enabled slash commands, each with this user's grant flag. */
+  commandCatalog: AdminUserCommand[];
+  /** Command names enabled for this user (subset of `commandCatalog`). */
+  enabledCommands: string[];
   jobs: JobSummary[];
   usage: UserUsageSummary;
+}
+
+/** A globally-enabled slash command with this user's grant flag, for the admin drawer. */
+export interface AdminUserCommand {
+  name: string;
+  description: string;
+  type: SlashCommandType;
+  allowed: boolean;
 }
 
 export interface UpdateUserRequest {
@@ -413,6 +488,7 @@ export interface UpdateUserRequest {
   enabledSkills?: string[];
   composioEnabled?: boolean;
   composioToolkits?: string[];
+  enabledCommands?: string[];
 }
 
 export interface TopupRequest {
@@ -432,6 +508,7 @@ export interface InviteUserRequest {
   enabledSkills?: string[];
   composioEnabled?: boolean;
   composioToolkits?: string[];
+  enabledCommands?: string[];
 }
 
 /** A scheduled job paired with the user who owns it (admin-wide view). */

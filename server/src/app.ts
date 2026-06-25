@@ -15,6 +15,7 @@ import { discoveryRouter } from './routes/discovery';
 import { jobsRouter } from './routes/jobs';
 import { adminRouter } from './routes/admin';
 import { composioRouter } from './routes/composio';
+import { commandsRouter } from './routes/commands';
 import { chatRouter } from './chat/routes';
 
 export function createApp(): Express {
@@ -37,6 +38,7 @@ export function createApp(): Express {
   app.use('/api/jobs', jobsRouter);
   app.use('/api/admin', adminRouter);
   app.use('/api/composio', composioRouter);
+  app.use('/api/commands', commandsRouter);
   app.use('/api/chat', chatRouter);
 
   app.use(errorMiddleware);

@@ -7,8 +7,9 @@ import { asyncHandler, notFound } from '../errors';
 import { getUserId, requireAuth } from '../auth/middleware';
 import { userQuota } from '../users/quota';
 import { SseWriter } from './sse';
-import { runChatTurn } from './stream';
+import { runChatTurn, runServerActionTurn } from './stream';
 import { respondToApproval, runChatTurnViaRuns } from './runs';
+import { resolveTurnCommand } from './commands';
 
 const imageInputSchema = z.object({
   url: z
@@ -46,10 +47,26 @@ chatRouter.post(
     const input = sendSchema.parse(req.body);
     const userId = getUserId(req);
 
-    const account = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { tier: true, creditsPurchased: true, creditsUsed: true },
-    });
+    const account = await prisma.user.findUnique({ where: { id: userId } });
+
+    // Curated slash commands: resolve before the credit/quota gates. A `server_action` short-
+    // circuits the gateway entirely (and is allowed even at zero credits); `prompt`/`skill_scope`
+    // fall through to a normal turn with per-turn overrides. Anything unrecognized is passthrough.
+    const command =
+      account && input.text.trim().startsWith('/')
+        ? await resolveTurnCommand(account, input.text)
+        : ({ kind: 'passthrough' } as const);
+
+    if (command.kind === 'serverAction') {
+      await runServerActionTurn({
+        userId,
+        conversationId: input.conversationId,
+        text: input.text,
+        replyText: command.replyText,
+        res,
+      });
+      return;
+    }
 
     // Out of credits: block before doing any work and nudge the user to top up.
     // Sent over the SSE channel (soft error) so the UI shows a calm CTA, not a hard failure.
@@ -75,7 +92,18 @@ chatRouter.post(
       return;
     }
 
-    const base = { userId, conversationId: input.conversationId, text: input.text, res };
+    // Carry any prompt-expansion / skill-scope overrides from the resolved command into the turn.
+    const overrides =
+      command.kind === 'prompt'
+        ? { gatewayText: command.gatewayText }
+        : command.kind === 'skillScope'
+          ? {
+              gatewayText: command.gatewayText,
+              overrideToolsets: command.overrideToolsets,
+              overrideSkills: command.overrideSkills,
+            }
+          : {};
+    const base = { userId, conversationId: input.conversationId, text: input.text, res, ...overrides };
     // The Runs API can't accept image input, so image turns always use the Sessions engine.
     const hasImages = (input.images?.length ?? 0) > 0;
     try {
