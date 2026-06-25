@@ -65,7 +65,11 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<void> {
   try {
     const response = await ctx.pooled.client.chatStream(
       sessionId,
-      { message: toHermesMessage(text, images), instructions: ctx.user.instructions ?? undefined },
+      {
+        message: toHermesMessage(text, images),
+        instructions: ctx.user.instructions ?? undefined,
+        allowed_toolsets: ctx.user.enabledToolsets.length > 0 ? ctx.user.enabledToolsets : undefined,
+      },
       { sessionKey: sessionKeyFor(userId), signal: controller.signal },
     );
     if (!response.ok || !response.body) {

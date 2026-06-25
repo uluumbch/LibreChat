@@ -81,6 +81,7 @@ export async function runChatTurnViaRuns(params: RunsChatTurnParams): Promise<vo
         session_id: sessionId,
         conversation_history: history,
         model: ctx.pooled.model,
+        allowed_toolsets: ctx.user.enabledToolsets.length > 0 ? ctx.user.enabledToolsets : undefined,
       },
       { sessionKey: sessionKeyFor(userId) },
     );

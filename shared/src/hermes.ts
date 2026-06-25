@@ -53,6 +53,12 @@ export interface HermesSessionChatRequest {
   /** A plain prompt, or multimodal parts when the turn carries images. */
   message: string | HermesContentPart[];
   instructions?: string;
+  /**
+   * Per-turn MCP toolset allowlist. When set, the gateway narrows the agent to
+   * this subset of its configured toolsets. Omit/empty = no restriction (inherit
+   * the gateway default). See docs/per-user-agent-profile.md.
+   */
+  allowed_toolsets?: string[];
 }
 
 export interface HermesUsageTokens {
@@ -177,6 +183,8 @@ export interface HermesRunRequest {
   session_id?: string;
   conversation_history?: Array<{ role: string; content: string }>;
   model?: string;
+  /** Per-run MCP toolset allowlist (see HermesSessionChatRequest.allowed_toolsets). */
+  allowed_toolsets?: string[];
 }
 
 export interface HermesRunCreatedResponse {
