@@ -336,8 +336,8 @@ export function UserDrawer({
               </div>
 
               <p style={{ margin: '-4px 0 18px', fontSize: 11.5, color: '#a1a1aa', lineHeight: 1.5 }}>
-                Model &amp; persona apply immediately. MCP servers &amp; skills are saved now and take
-                effect once gateway enforcement ships.
+                Model, persona, MCP servers, and skills all take effect on the user&apos;s next turn.
+                Leave MCP servers or skills empty to inherit the full set (no restriction).
               </p>
 
               <div style={{ marginBottom: 20 }}>

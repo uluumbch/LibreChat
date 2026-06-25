@@ -69,6 +69,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<void> {
         message: toHermesMessage(text, images),
         instructions: ctx.user.instructions ?? undefined,
         allowed_toolsets: ctx.user.enabledToolsets.length > 0 ? ctx.user.enabledToolsets : undefined,
+        allowed_skills: ctx.user.enabledSkills.length > 0 ? ctx.user.enabledSkills : undefined,
       },
       { sessionKey: sessionKeyFor(userId), signal: controller.signal },
     );

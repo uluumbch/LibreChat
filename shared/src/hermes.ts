@@ -59,6 +59,12 @@ export interface HermesSessionChatRequest {
    * the gateway default). See docs/per-user-agent-profile.md.
    */
   allowed_toolsets?: string[];
+  /**
+   * Per-turn skill allowlist. When set, the gateway restricts which skills the
+   * agent can see/load (skills_list, the prompt index, and skill_view).
+   * Omit/empty = no restriction. See docs/per-user-agent-profile.md.
+   */
+  allowed_skills?: string[];
 }
 
 export interface HermesUsageTokens {
@@ -185,6 +191,8 @@ export interface HermesRunRequest {
   model?: string;
   /** Per-run MCP toolset allowlist (see HermesSessionChatRequest.allowed_toolsets). */
   allowed_toolsets?: string[];
+  /** Per-run skill allowlist (see HermesSessionChatRequest.allowed_skills). */
+  allowed_skills?: string[];
 }
 
 export interface HermesRunCreatedResponse {

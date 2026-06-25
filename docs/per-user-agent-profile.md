@@ -26,12 +26,14 @@ through whichever gateway serves the turn. This was delivered in two phases:
 | **Model** | ✅ | ✅ (always) | `model` on session/run |
 | **Persona / instructions** | ✅ | ✅ (always) | `system_prompt` / `instructions` |
 | **MCP toolsets** (`enabledToolsets`) | ✅ | ✅ **(Phase 2)** | `allowed_toolsets` on chat/run → gateway restricts |
-| **Skills** (`enabledSkills`) | ✅ | ⏳ **not yet** | stored + editable; gateway enforcement is the next step |
+| **Skills** (`enabledSkills`) | ✅ | ✅ **(Phase 3)** | `allowed_skills` on chat/run → gateway hides + hard-gates `skill_view` |
 | **Provider API key** | ❌ (by design) | n/a | gateway-managed; "API key per user" was scoped to model/gateway selection, **not** BYOK |
 
-> **Skills are stored and editable but not yet enforced.** The gateway has no per-request skill
-> allowlist, and skills remain loadable via the `skill_view` tool regardless of the prompt index.
-> Enforcing skills cleanly is the documented follow-up — see "Remaining work" below.
+> **Skills enforcement (Phase 3):** when a user's `enabledSkills` is non-empty, the gateway hides
+> non-allowed skills from `skills_list` and the prompt index, **and hard-gates `skill_view`** (the only
+> way to load a skill) so the agent physically cannot use a skill outside the allowlist. Empty = inherit
+> all. Skills are reachable only when the **"skills" toolset** is enabled (`enabledToolsets`);
+> `enabledSkills` narrows *which* skills within that.
 
 ## Data model
 
@@ -91,13 +93,15 @@ allowed_toolsets: ctx.user.enabledToolsets.length > 0 ? ctx.user.enabledToolsets
 ### Shared types
 - `shared/src/types.ts` — `HermesProfile`, `AdminUserDetail` (`enabledSkills` + `skills` catalog),
   `UpdateUserRequest`, `InviteUserRequest`.
-- `shared/src/hermes.ts` — `HermesSessionChatRequest.allowed_toolsets`,
-  `HermesRunRequest.allowed_toolsets` (the wire field Phase 2 added).
+- `shared/src/hermes.ts` — `HermesSessionChatRequest` / `HermesRunRequest` carry both
+  `allowed_toolsets` (Phase 2) and `allowed_skills` (Phase 3).
 
-### Enforcement path (Phase 2)
-- Server sends `allowed_toolsets` on each chat/run (`stream.ts`, `runs.ts`).
-- Gateway restricts the agent's toolsets to that subset — see
-  [gateway-modifications.md](./gateway-modifications.md).
+### Enforcement path
+- **Toolsets (Phase 2):** server sends `allowed_toolsets` on each chat/run (`stream.ts`, `runs.ts`);
+  the gateway restricts the agent's toolsets to that subset.
+- **Skills (Phase 3):** server sends `allowed_skills`; the gateway carries it in session context and
+  gates `skills_list`, the prompt index, and `skill_view`.
+- Both detailed in [gateway-modifications.md](./gateway-modifications.md).
 
 ## Verification
 
@@ -110,18 +114,14 @@ allowed_toolsets: ctx.user.enabledToolsets.length > 0 ? ctx.user.enabledToolsets
 4. **Toolset enforcement (Phase 2)**: with a non-empty `enabledToolsets`, send a turn → the gateway
    logs `per-session toolset restriction <all> -> <subset>` and the agent only has the allowed
    toolsets. (Sending an allowlist that intersects to empty yields an agent with **no** toolsets.)
-
-## Remaining work (skills enforcement)
-
-To enforce `enabledSkills` per user, the gateway needs a per-request skill allowlist. Two seams exist
-in `vendor/hermes-agent`:
-
-- `agent/prompt_builder.py::build_skills_system_prompt(available_tools, available_toolsets, …)` builds
-  the skill **index** in the system prompt; it already filters by available tools/toolsets and by
-  `agent/skill_utils.py::get_disabled_skill_names(platform)`.
-- True enforcement also needs the **`skill_view` / `skills_list` tools** to honor the allowlist, since
-  skills are loadable regardless of the prompt index.
-
-The data path is already wired end-to-end (`enabledSkills` stored + editable); only the gateway-side
-application remains. Mirror the `allowed_toolsets` thread-through (request body → `_run_agent` /
-`_handle_runs` → agent) for an `allowed_skills` field.
+5. **Skill enforcement (Phase 3)** — deterministic, no LLM (exploits the os.environ fallback):
+   ```bash
+   docker compose exec -T hermes-agent python -c "import os, json; \
+     os.environ['HERMES_SESSION_ALLOWED_SKILLS']='claude-code'; \
+     from tools.skills_tool import skills_list, skill_view; \
+     print(len(json.loads(skills_list()))); \
+     print(json.loads(skill_view('claude-code'))['success']); \
+     print(json.loads(skill_view('codex'))['success'])"
+   ```
+   Expect `skills_list` down to the allowed skill, the allowed `skill_view` `True`, the other `False`
+   ("not enabled for this session"). With no env set, the full catalog returns and any skill loads.
