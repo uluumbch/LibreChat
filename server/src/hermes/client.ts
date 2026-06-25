@@ -1,4 +1,5 @@
 import type {
+  CreateMcpServerRequest,
   HermesCapabilitiesResponse,
   HermesCreateSessionRequest,
   HermesHealthResponse,
@@ -12,6 +13,7 @@ import type {
   HermesSessionChatRequest,
   HermesSkillsResponse,
   HermesToolsetsResponse,
+  McpServer,
 } from '@hermes/shared';
 import { HERMES_SESSION_ID_HEADER, HERMES_SESSION_KEY_HEADER } from '@hermes/shared';
 import type { GatewayConfig } from '../config';
@@ -202,6 +204,19 @@ export class HermesClient {
 
   listSkills(): Promise<HermesSkillsResponse> {
     return this.requestJson('/v1/skills');
+  }
+
+  async listMcpServers(): Promise<McpServer[]> {
+    const data = await this.requestJson<{ data: McpServer[] }>('/api/mcp-servers');
+    return data.data ?? [];
+  }
+
+  createMcpServer(body: CreateMcpServerRequest): Promise<{ name: string; connected: boolean }> {
+    return this.requestJson('/api/mcp-servers', { method: 'POST', body: JSON.stringify(body) });
+  }
+
+  deleteMcpServer(name: string): Promise<{ deleted: string }> {
+    return this.requestJson(`/api/mcp-servers/${encodeURIComponent(name)}`, { method: 'DELETE' });
   }
 
   capabilities(): Promise<HermesCapabilitiesResponse> {

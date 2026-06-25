@@ -3,7 +3,8 @@
 `vendor/hermes-agent` is a **git submodule** pointing at our fork
 (`github.com/uluumbch/hermes-agent`, branch `main`). LibreChatHermes carries a **small, surgical**
 divergence from upstream so the gateway can enforce **per-user MCP toolsets and skills** per request.
-This page is the canonical record of that divergence — read it before editing the gateway.
+It also adds admin HTTP endpoints to manage remote MCP servers. This page is the canonical record of
+that divergence — read it before editing the gateway.
 
 ## Principle
 
@@ -105,6 +106,45 @@ Skills are reachable only when the **"skills" toolset** is enabled for the user 
 `allowed_skills` narrows *which* skills within that. If the toolset allowlist omits `skills`, there are
 no skill tools at all and `allowed_skills` is moot.
 
+---
+
+## Part C — admin-managed MCP servers (`/api/mcp-servers`)
+
+Lets the admin panel add/remove **global, remote-URL** MCP servers without hand-editing `config.yaml`.
+All changes in **`gateway/platforms/api_server.py`**; persistence + connection reuse existing gateway
+internals.
+
+### C1. New HTTP endpoints (admin-key auth via `_check_auth`)
+
+- `GET /api/mcp-servers` — list configured servers from `config.yaml` `mcp_servers`, **header values
+  masked** (`_mask_mcp_headers`), with a `connected` flag from `tools.mcp_tool._servers`.
+- `POST /api/mcp-servers` — body `{ name, url, transport?, headers?, timeout? }`. **Remote-only**:
+  requires an `https://` `url` and **rejects `command`/`args`** (400). Persists via
+  `hermes_cli.mcp_config._save_mcp_server` (which also runs `validate_mcp_server_entry`), then reloads.
+- `DELETE /api/mcp-servers/{name}` — `_remove_mcp_server(name)`, then reloads.
+
+### C2. Live reload (`_reload_mcp_servers`)
+
+Runs `shutdown_mcp_servers()` + `discover_mcp_tools()` in an executor (same pair as `/reload-mcp`);
+returns connected names. Process-global — briefly affects in-flight turns; acceptable for an admin op.
+No restart needed: `load_config` re-reads on the file's mtime change.
+
+### C3. Surfacing MCP in `/v1/toolsets` (`_handle_toolsets`)
+
+A configured MCP server registers a toolset under its **bare name** and is enabled for all agents by
+default (`_get_platform_tools(..., include_default_mcp_servers=True)`), but `_handle_toolsets` lists
+only static + plugin toolsets — so MCP servers were invisible to the admin per-user toggles. We now
+**append one entry per `config["mcp_servers"]`** (`{ name, label: "MCP · <name>", enabled: true,
+mcp: true, tools }`). This is what makes per-user restrict work: the same bare name flows into the
+Phase-2 `allowed_toolsets` intersection, so toggling a server off for a user removes it for that user —
+no new enforcement code.
+
+### C4. Per-user model
+
+MCP servers are **global** (enabled for everyone by default). "Only user A" = give the *other* users an
+explicit `enabledToolsets` allowlist that excludes the server (empty list = inherit all). Awkward at
+scale by design — a true additive per-user grant was deferred.
+
 ## Why a fork and not a per-user gateway
 
 The alternative — one gateway process per user, each with its own `config.yaml` — was evaluated and
@@ -135,11 +175,14 @@ for f in gateway/platforms/api_server.py gateway/session_context.py agent/skill_
 
 | File | Part | Change |
 |------|------|--------|
-| `gateway/platforms/api_server.py` | A + B | `_normalize_str_list`, `_create_agent`/`_run_agent` overrides, body parse + `set_session_vars` wiring |
+| `gateway/platforms/api_server.py` | A + B + C | overrides + `set_session_vars` wiring; `/api/mcp-servers` routes + reload; MCP entries in `_handle_toolsets` |
 | `gateway/session_context.py` | B | `HERMES_SESSION_ALLOWED_SKILLS` contextvar |
 | `agent/skill_utils.py` | B | `get_allowed_skill_names`, `skill_is_allowed` |
 | `agent/prompt_builder.py` | B | allowlist read + cache key + index filters |
 | `tools/skills_tool.py` | B | `skill_view` gate + `skills_list` filter + `_allowed` helper |
+
+(Part C reuses existing `hermes_cli.mcp_config._save_mcp_server`/`_remove_mcp_server` and
+`tools.mcp_tool.shutdown_mcp_servers`/`discover_mcp_tools` — no changes to those modules.)
 
 ## Maintaining against upstream
 
@@ -150,7 +193,8 @@ for f in gateway/platforms/api_server.py gateway/session_context.py agent/skill_
   `is not None` / non-empty / allowlist checks, so they default to upstream behavior).
 - Grep anchors for finding our changes: `allowed_toolsets`, `allowed_skills`, `_normalize_str_list`,
   `enabled_toolsets_override`, `allowed_skills_override`, `HERMES_SESSION_ALLOWED_SKILLS`,
-  `skill_is_allowed`, `per-session toolset restriction`, `not enabled for this session`.
+  `skill_is_allowed`, `per-session toolset restriction`, `not enabled for this session`,
+  `/api/mcp-servers`, `_handle_create_mcp_server`, `_reload_mcp_servers`, `MCP ·`.
 
 ## Verification
 
@@ -175,4 +219,15 @@ for f in gateway/platforms/api_server.py gateway/session_context.py agent/skill_
      print(json.loads(skill_view('codex'))['success'])"
    ```
    Expect the list narrowed to the allowed skill, allowed `skill_view` `True`, the other `False`.
-4. A normal chat **without** `allowed_toolsets` / `allowed_skills` behaves exactly as before.
+4. **MCP servers** — CRUD + masking + surfacing:
+   ```bash
+   curl -s -X POST localhost:8642/api/mcp-servers -H "Authorization: Bearer $KEY" \
+     -H 'Content-Type: application/json' \
+     -d '{"name":"demo","url":"https://example.com/mcp","headers":{"Authorization":"Bearer s"}}'
+   curl -s localhost:8642/api/mcp-servers -H "Authorization: Bearer $KEY"   # headers masked ••••
+   curl -s localhost:8642/v1/toolsets -H "Authorization: Bearer $KEY" | grep -o '"demo"'   # surfaced
+   curl -s -X POST localhost:8642/api/mcp-servers -H "Authorization: Bearer $KEY" \
+     -d '{"name":"x","command":"npx"}'                                       # 400 stdio rejected
+   curl -s -X DELETE localhost:8642/api/mcp-servers/demo -H "Authorization: Bearer $KEY"
+   ```
+5. A normal chat **without** `allowed_toolsets` / `allowed_skills` behaves exactly as before.

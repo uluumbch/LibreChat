@@ -276,6 +276,30 @@ export interface SkillsResponse {
   items: SkillOption[];
 }
 
+/** A globally-configured (remote) MCP server, as managed from the admin panel. */
+export interface McpServer {
+  name: string;
+  url: string | null;
+  transport: 'http' | 'sse' | string;
+  /** Header keys with masked values — secrets are never returned to the client. */
+  headersMasked: Record<string, string>;
+  /** Whether the gateway currently has a live connection to this server. */
+  connected: boolean;
+}
+
+export interface McpServersResponse {
+  items: McpServer[];
+}
+
+export interface CreateMcpServerRequest {
+  name: string;
+  /** Must be an https:// URL — remote MCP servers only (no local command execution). */
+  url: string;
+  transport?: 'http' | 'sse';
+  headers?: Record<string, string>;
+  timeout?: number;
+}
+
 /* ------------------------------ Admin DTOs ------------------------------ */
 
 /** A workspace member as shown in the admin Users/Credits tables. */

@@ -33,6 +33,7 @@ The admin sections are **real routes**, not local state: `/admin/:section?` →
 | Users | `/admin/users` |
 | Credits | `/admin/billing` |
 | Scheduled jobs | `/admin/jobs` |
+| MCP servers | `/admin/mcp` |
 
 So tabs are linkable, bookmarkable, and back/forward works.
 
@@ -49,6 +50,12 @@ So tabs are linkable, bookmarkable, and back/forward works.
 | PATCH | `/api/admin/users/:id/tier` | Set `tier` (`free`/`dedicated`) + optional `dedicatedGatewayId` |
 | GET | `/api/admin/jobs` | All users' scheduled (cron) jobs |
 | POST | `/api/admin/jobs/:id/:action` | `pause` / `resume` / `run` a job |
+| GET | `/api/admin/mcp-servers` | List global MCP servers (header secrets masked) |
+| POST | `/api/admin/mcp-servers` | Add a remote (https) MCP server; live-reloaded on the gateway |
+| DELETE | `/api/admin/mcp-servers/:name` | Remove an MCP server |
+
+All `/api/admin/mcp-servers` routes proxy to the resolved gateway's new `/api/mcp-servers` endpoints
+(see [gateway-modifications.md](./gateway-modifications.md) Part C).
 
 ## UI components (`client/src/components/admin/`)
 
@@ -60,11 +67,14 @@ So tabs are linkable, bookmarkable, and back/forward works.
   [per-user-agent-profile.md](./per-user-agent-profile.md).
 - `Billing.tsx` — per-user balances + top-up.
 - `JobsTable.tsx` — cron jobs across users.
+- `McpServers.tsx` / `McpServerModal.tsx` — global MCP server list + add (remote https only). Added
+  servers appear in each user's `UserDrawer` "MCP servers" toggles for per-user restrict.
 - `InviteModal.tsx` / `TopupModal.tsx` — create user / add credits.
 
 ## React Query hooks (`client/src/data/queries.ts`)
 
 `useAdminOverview`, `useAdminUsers(q)`, `useAdminUser(id)`, `useUpdateAdminUser`, `useTopupUser`,
+`useMcpServers`, `useCreateMcpServer`, `useDeleteMcpServer`,
 `useInviteUser`, `useAdminJobs`, `useAdminJobAction`. Mutations invalidate the `['admin']` query branch.
 
 ## Promoting an admin

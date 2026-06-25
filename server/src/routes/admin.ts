@@ -411,3 +411,44 @@ adminRouter.patch(
     res.json(toApiUser(updated));
   }),
 );
+
+// ── MCP servers (global, remote-URL only) ────────────────────────────────────
+// Managed on the resolved gateway's config; each becomes a toolset that admins
+// then restrict per user via the existing enabledToolsets toggles.
+
+const createMcpBody = z.object({
+  name: z
+    .string()
+    .min(1)
+    .max(64)
+    .regex(/^[a-zA-Z0-9_-]+$/, 'Use letters, numbers, dashes or underscores'),
+  url: z.string().url().startsWith('https://', 'Must be an https:// URL'),
+  transport: z.enum(['http', 'sse']).optional(),
+  headers: z.record(z.string().max(200)).optional(),
+  timeout: z.number().int().positive().max(3600).optional(),
+});
+
+adminRouter.get(
+  '/mcp-servers',
+  asyncHandler(async (_req, res) => {
+    const items = await gateway().client.listMcpServers();
+    res.json({ items });
+  }),
+);
+
+adminRouter.post(
+  '/mcp-servers',
+  asyncHandler(async (req, res) => {
+    const input = createMcpBody.parse(req.body);
+    const result = await gateway().client.createMcpServer(input);
+    res.status(201).json(result);
+  }),
+);
+
+adminRouter.delete(
+  '/mcp-servers/:name',
+  asyncHandler(async (req, res) => {
+    await gateway().client.deleteMcpServer(requireParam(req, 'name'));
+    res.status(204).end();
+  }),
+);

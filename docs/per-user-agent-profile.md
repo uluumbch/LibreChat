@@ -25,9 +25,15 @@ through whichever gateway serves the turn. This was delivered in two phases:
 |------|:----------------------:|:-----------------------:|-------|
 | **Model** | ✅ | ✅ (always) | `model` on session/run |
 | **Persona / instructions** | ✅ | ✅ (always) | `system_prompt` / `instructions` |
-| **MCP toolsets** (`enabledToolsets`) | ✅ | ✅ **(Phase 2)** | `allowed_toolsets` on chat/run → gateway restricts |
+| **Toolsets & MCP** (`enabledToolsets`) | ✅ | ✅ **(Phase 2)** | `allowed_toolsets` on chat/run → gateway restricts |
 | **Skills** (`enabledSkills`) | ✅ | ✅ **(Phase 3)** | `allowed_skills` on chat/run → gateway hides + hard-gates `skill_view` |
 | **Provider API key** | ❌ (by design) | n/a | gateway-managed; "API key per user" was scoped to model/gateway selection, **not** BYOK |
+
+> **Toolsets vs MCP:** the `enabledToolsets` list covers **both** the gateway's built-in toolsets
+> (`web`, `browser`, `file`, …) **and** any admin-added MCP servers (each surfaces as a toolset under its
+> name). MCP servers are managed globally in the admin **MCP** section; per-user control is the same
+> `enabledToolsets` allowlist. See [admin-panel.md](./admin-panel.md) and
+> [gateway-modifications.md](./gateway-modifications.md) Part C.
 
 > **Skills enforcement (Phase 3):** when a user's `enabledSkills` is non-empty, the gateway hides
 > non-allowed skills from `skills_list` and the prompt index, **and hard-gates `skill_view`** (the only

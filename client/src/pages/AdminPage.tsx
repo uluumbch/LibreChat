@@ -17,6 +17,7 @@ import { UsersTable } from '~/components/admin/UsersTable';
 import type { UserFilter } from '~/components/admin/UsersTable';
 import { Billing } from '~/components/admin/Billing';
 import { JobsTable } from '~/components/admin/JobsTable';
+import { McpServers } from '~/components/admin/McpServers';
 import { UserDrawer } from '~/components/admin/UserDrawer';
 import { TopupModal } from '~/components/admin/TopupModal';
 import { InviteModal } from '~/components/admin/InviteModal';
@@ -28,12 +29,13 @@ import {
   CreditsIcon,
   OverviewIcon,
   SearchIcon,
+  ShieldIcon,
   UsersIcon,
 } from '~/components/admin/icons';
 
-type View = 'overview' | 'users' | 'billing' | 'jobs';
+type View = 'overview' | 'users' | 'billing' | 'jobs' | 'mcp';
 
-const VIEWS: readonly View[] = ['overview', 'users', 'billing', 'jobs'];
+const VIEWS: readonly View[] = ['overview', 'users', 'billing', 'jobs', 'mcp'];
 
 function isView(value: string | undefined): value is View {
   return value != null && (VIEWS as readonly string[]).includes(value);
@@ -49,6 +51,7 @@ const TITLES: Record<View, [string, string]> = {
   users: ['Users', 'Manage agent profiles and credits'],
   billing: ['Credits', 'Per-user credit balances and top-ups'],
   jobs: ['Scheduled jobs', 'All cron jobs running across user agents'],
+  mcp: ['MCP servers', 'Global MCP connectors available to user agents'],
 };
 
 const NAV: Array<{ key: View; label: string; icon: ReactNode }> = [
@@ -56,6 +59,7 @@ const NAV: Array<{ key: View; label: string; icon: ReactNode }> = [
   { key: 'users', label: 'Users', icon: <UsersIcon /> },
   { key: 'billing', label: 'Credits', icon: <CreditsIcon /> },
   { key: 'jobs', label: 'Scheduled jobs', icon: <ClockIcon /> },
+  { key: 'mcp', label: 'MCP servers', icon: <ShieldIcon size={16} /> },
 ];
 
 export default function AdminPage(): JSX.Element {
@@ -387,6 +391,7 @@ export default function AdminPage(): JSX.Element {
                 onAction={(id, action) => void runJobAction(id, action)}
               />
             )}
+            {view === 'mcp' && <McpServers onFlash={flash} />}
           </div>
         </div>
       </div>

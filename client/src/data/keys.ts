@@ -13,4 +13,5 @@ export const queryKeys = {
   adminUsers: (q: string) => ['admin', 'users', q] as const,
   adminUser: (id: string) => ['admin', 'user', id] as const,
   adminJobs: ['admin', 'jobs'] as const,
+  adminMcp: ['admin', 'mcp'] as const,
 };

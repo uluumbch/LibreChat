@@ -15,8 +15,10 @@ import type {
   ConversationUsage,
   CreateConversationRequest,
   CreateJobRequest,
+  CreateMcpServerRequest,
   CursorPage,
   InviteUserRequest,
+  McpServersResponse,
   JobsResponse,
   JobSummary,
   Message,
@@ -277,5 +279,39 @@ export function useAdminJobAction() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.adminJobs });
     },
+  });
+}
+
+export function useMcpServers() {
+  return useQuery({
+    queryKey: queryKeys.adminMcp,
+    queryFn: () => apiRequest<McpServersResponse>('GET', '/api/admin/mcp-servers'),
+    staleTime: 15 * 1000,
+  });
+}
+
+/** After an MCP change, refresh both the MCP list and the toolset catalog (so the
+ *  UserDrawer per-user toggles pick up the new/removed server). */
+function invalidateMcp(queryClient: ReturnType<typeof useQueryClient>): void {
+  void queryClient.invalidateQueries({ queryKey: queryKeys.adminMcp });
+  void queryClient.invalidateQueries({ queryKey: queryKeys.toolsets });
+  void queryClient.invalidateQueries({ queryKey: ['admin'] });
+}
+
+export function useCreateMcpServer() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateMcpServerRequest) =>
+      apiRequest<{ name: string; connected: boolean }>('POST', '/api/admin/mcp-servers', body),
+    onSuccess: () => invalidateMcp(queryClient),
+  });
+}
+
+export function useDeleteMcpServer() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) =>
+      apiRequest<void>('DELETE', `/api/admin/mcp-servers/${encodeURIComponent(name)}`),
+    onSuccess: () => invalidateMcp(queryClient),
   });
 }
