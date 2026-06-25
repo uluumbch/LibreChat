@@ -34,6 +34,7 @@ The admin sections are **real routes**, not local state: `/admin/:section?` →
 | Credits | `/admin/billing` |
 | Scheduled jobs | `/admin/jobs` |
 | MCP servers | `/admin/mcp` |
+| Composio toolkits | `/admin/composio` |
 
 So tabs are linkable, bookmarkable, and back/forward works.
 
@@ -53,6 +54,8 @@ So tabs are linkable, bookmarkable, and back/forward works.
 | GET | `/api/admin/mcp-servers` | List global MCP servers (header secrets masked) |
 | POST | `/api/admin/mcp-servers` | Add a remote (https) MCP server; live-reloaded on the gateway |
 | DELETE | `/api/admin/mcp-servers/:name` | Remove an MCP server |
+| GET | `/api/admin/composio/toolkits?q=` | Live Composio catalog (searchable) overlaid with our enabled state + per-toolkit user counts |
+| PATCH | `/api/admin/composio/toolkits/:slug` | Enable (`{enabled:true}`) or disable a toolkit; disable **cascades** — strips the grant from all users and disconnects their Composio accounts |
 
 All `/api/admin/mcp-servers` routes proxy to the resolved gateway's new `/api/mcp-servers` endpoints
 (see [gateway-modifications.md](./gateway-modifications.md) Part C).
@@ -70,6 +73,10 @@ All `/api/admin/mcp-servers` routes proxy to the resolved gateway's new `/api/mc
 - `JobsTable.tsx` — cron jobs across users.
 - `McpServers.tsx` / `McpServerModal.tsx` — global MCP server list + add (remote https only). Added
   servers appear in each user's `UserDrawer` "MCP servers" toggles for per-user restrict.
+- `ComposioToolkits.tsx` — searchable live Composio catalog with an enable toggle per app; disabling an
+  in-use toolkit shows a confirm dialog (revokes + disconnects all users). Enabled toolkits become the
+  grantable set in each user's `UserDrawer`. See
+  [composio-third-party-apps.md](./composio-third-party-apps.md).
 - `InviteModal.tsx` / `TopupModal.tsx` — create user / add credits.
 
 ## React Query hooks (`client/src/data/queries.ts`)

@@ -273,6 +273,31 @@ export interface ComposioConnectResponse {
   redirectUrl: string;
 }
 
+/** A Composio toolkit in the admin catalog (live Composio entry + our enabled state). */
+export interface AdminComposioToolkit {
+  slug: string;
+  name: string;
+  logo: string | null;
+  description: string | null;
+  toolsCount: number | null;
+  /** Whether this toolkit is enabled product-wide (grantable to users). */
+  enabled: boolean;
+  /** How many users currently have this toolkit granted (for the disable warning). */
+  userCount: number;
+}
+
+export interface AdminComposioToolkitsResponse {
+  /** Whether a Composio API key is configured on the server. */
+  configured: boolean;
+  items: AdminComposioToolkit[];
+}
+
+export interface ToggleComposioToolkitRequest {
+  enabled: boolean;
+  /** Display name to cache when enabling (defaults to the live catalog name). */
+  name?: string;
+}
+
 /* ----------------------------- Discovery DTOs ----------------------------- */
 
 export interface ModelOption {

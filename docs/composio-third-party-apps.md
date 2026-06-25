@@ -25,11 +25,18 @@ Chat turn          ──►  server sends composio_user_id + composio_toolkits 
 Gateway            ──►  offers the `composio` toolset; tools run as that user via the Composio SDK
 ```
 
-### Enforcement model
+### Two-level model
 
-- **Admin opt-in** is per user: `composio_enabled` (bool) + `composio_toolkits` (allowlist of toolkit
-  slugs). Empty list = nothing connectable. These are **admin-only** — the self-service profile route
-  cannot change them.
+- **Global enable (workspace):** admins curate which Composio toolkits exist for the product in the
+  admin **Composio toolkits** section (`/admin/composio`). The browsable catalog is fetched **live**
+  from Composio (`composio.listToolkits`); the enabled set is our own `composio_toolkits` table
+  (presence of a row = enabled, name cached). Only enabled toolkits are grantable. **Disabling
+  cascades:** the slug is stripped from every user's grant and all their Composio connected accounts
+  for it are deleted (the UI warns with the affected-user count first). Seeded enabled on first
+  migration: `googledrive`, `notion`, `googlesheets`.
+- **Per-user grant:** per user, `composio_enabled` (bool) + `composio_toolkits` (⊆ the globally-enabled
+  set, validated server-side). Empty list = nothing connectable. **Admin-only** — the self-service
+  profile route cannot change them.
 - The chat path (`server/src/chat/stream.ts`, `runs.ts`) sends `composio_user_id` + `composio_toolkits`
   **only** when `composio_enabled` and the allowlist is non-empty (`composioTurnFields()` in
   `server/src/composio/client.ts`).
@@ -74,19 +81,26 @@ OAuth** — the server reuses an existing auth config for a toolkit or creates o
 - `Dockerfile` — installs the `composio` Python SDK.
 
 ### Server (`server/`)
-- `src/composio/catalog.ts` — the hardcoded toolkit catalog (`googledrive`, `notion`, `googlesheets`)
-  + slug validation. **TODO:** fetch live from Composio.
-- `src/composio/client.ts` — Composio v3 REST client (auth configs, connections) + `composioTurnFields()`.
-- `src/routes/composio.ts` — self-service `GET /toolkits`, `POST/DELETE /connections/:toolkit`,
-  public `GET /callback`.
-- `src/routes/admin.ts` — `composio_enabled` / `composio_toolkits` on update + invite; the catalog on
-  the user detail.
-- `prisma/schema.prisma` + `migrations/20260625120000_user_composio/` — the two `User` columns.
+- `src/composio/catalog.ts` — DB-backed enabled set: `getEnabledToolkits` / `getEnabledSlugs` /
+  `isEnabledToolkit` / `toolkitName` over the `composio_toolkits` table.
+- `src/composio/client.ts` — Composio v3 REST client (auth configs, connections, `listToolkits`,
+  `disconnectToolkitForAll`) + `composioTurnFields()`.
+- `src/routes/composio.ts` — self-service `GET /toolkits` (enabled ∩ granted), `POST/DELETE
+  /connections/:toolkit`, public `GET /callback`.
+- `src/routes/admin.ts` — `composio_enabled` / `composio_toolkits` on update + invite (validated ⊆
+  enabled); the user-detail catalog; the **`/admin/composio/toolkits`** GET + PATCH (toggle + cascade).
+- `prisma/schema.prisma` + migrations — the two `User` columns
+  (`20260625120000_user_composio`) and the `ComposioToolkit` catalog table
+  (`20260625150000_composio_toolkit_catalog`, seeded).
 
 ### Client (`client/`)
 - `src/components/ThirdPartyApps.tsx` — the **Settings → Third-Party Apps** tab (connect/disconnect).
-- `src/components/admin/UserDrawer.tsx` — admin enable toggle + per-toolkit allowlist.
-- `src/data/queries.ts` — `useComposioToolkits`, `useConnectComposio`, `useDisconnectComposio`.
+- `src/components/admin/ComposioToolkits.tsx` — admin **Composio toolkits** section (search the live
+  catalog, enable/disable, disable-confirm warning).
+- `src/components/admin/UserDrawer.tsx` — admin enable toggle + per-toolkit allowlist (from the
+  enabled set).
+- `src/data/queries.ts` — `useComposioToolkits`, `useConnectComposio`, `useDisconnectComposio`,
+  `useComposioAdminToolkits`, `useToggleComposioToolkit`.
 
 ## Verification
 
@@ -113,6 +127,5 @@ OAuth** — the server reuses an existing auth config for a toolkit or creates o
 
 ## Out of scope / follow-ups
 
-- Live toolkit-catalog fetch from Composio (catalog is hardcoded to 3 for now).
 - Per-user Composio MCP-URL path for dedicated-tier gateways.
 - Webhook-driven connection-status sync (we query Composio live for the Settings tab).

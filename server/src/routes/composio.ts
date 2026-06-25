@@ -6,7 +6,7 @@ import { asyncHandler, HttpError, unauthorized } from '../errors';
 import { getUserId, requireAuth } from '../auth/middleware';
 import { requireParam } from '../http';
 import { logger } from '../logger';
-import { COMPOSIO_CATALOG, isCatalogSlug, toolkitName } from '../composio/catalog';
+import { getEnabledToolkits, isEnabledToolkit, toolkitName } from '../composio/catalog';
 import { composio, ComposioError } from '../composio/client';
 
 export const composioRouter: Router = Router();
@@ -52,6 +52,9 @@ composioRouter.get(
     const enabled = user.composioEnabled;
     const allowed = new Set(user.composioToolkits);
 
+    // Only globally-enabled toolkits are shown — and only those granted to the user.
+    const enabledToolkits = await getEnabledToolkits();
+
     let connected = new Set<string>();
     if (configured && enabled && allowed.size > 0) {
       try {
@@ -62,14 +65,14 @@ composioRouter.get(
       }
     }
 
-    const items: ComposioToolkit[] = COMPOSIO_CATALOG.filter((t) => allowed.has(t.slug)).map(
-      (t) => ({
+    const items: ComposioToolkit[] = enabledToolkits
+      .filter((t) => allowed.has(t.slug))
+      .map((t) => ({
         slug: t.slug,
         name: t.name,
         allowed: true,
         connected: connected.has(t.slug),
-      }),
-    );
+      }));
 
     const body: ComposioToolkitsResponse = { enabled, configured, items };
     res.json(body);
@@ -87,11 +90,15 @@ composioRouter.post(
     const user = await prisma.user.findUnique({ where: { id: getUserId(req) } });
     if (!user) throw unauthorized();
 
-    if (!isCatalogSlug(toolkit)) {
-      throw new HttpError(400, `Unknown app: ${toolkit}`, 'unknown_toolkit');
+    if (!(await isEnabledToolkit(toolkit))) {
+      throw new HttpError(400, `Unknown or disabled app: ${toolkit}`, 'unknown_toolkit');
     }
     if (!user.composioEnabled || !user.composioToolkits.includes(toolkit)) {
-      throw new HttpError(403, `${toolkitName(toolkit)} is not enabled for your account.`, 'toolkit_forbidden');
+      throw new HttpError(
+        403,
+        `${await toolkitName(toolkit)} is not enabled for your account.`,
+        'toolkit_forbidden',
+      );
     }
 
     try {
@@ -110,8 +117,8 @@ composioRouter.delete(
     const toolkit = requireParam(req, 'toolkit').toLowerCase();
     const user = await prisma.user.findUnique({ where: { id: getUserId(req) } });
     if (!user) throw unauthorized();
-    if (!isCatalogSlug(toolkit)) {
-      throw new HttpError(400, `Unknown app: ${toolkit}`, 'unknown_toolkit');
+    if (!(await isEnabledToolkit(toolkit))) {
+      throw new HttpError(400, `Unknown or disabled app: ${toolkit}`, 'unknown_toolkit');
     }
     try {
       await composio.disconnect(user.id, toolkit);

@@ -14,10 +14,18 @@
  */
 import { config } from '../config';
 import { logger } from '../logger';
-import { isCatalogSlug } from './catalog';
 
 export interface InitiateResult {
   redirectUrl: string;
+}
+
+/** One entry of the live Composio toolkit catalog (admin browse/enable view). */
+export interface ComposioCatalogEntry {
+  slug: string;
+  name: string;
+  logo: string | null;
+  description: string | null;
+  toolsCount: number | null;
 }
 
 /** Thrown for Composio API failures; carries an HTTP-ish status for the route layer. */
@@ -116,9 +124,6 @@ class ComposioClient {
    * user to; after they authorize, Composio redirects back to our settings page.
    */
   async initiateConnection(userId: string, toolkit: string): Promise<InitiateResult> {
-    if (!isCatalogSlug(toolkit)) {
-      throw new ComposioError(`Unknown toolkit '${toolkit}'.`, 400);
-    }
     const authConfigId = await this.ensureAuthConfig(toolkit);
     // Composio-managed OAuth uses the dedicated /link endpoint (the plain
     // /connected_accounts POST is rejected for managed auth configs).
@@ -177,6 +182,52 @@ class ComposioClient {
         await this.request(`/connected_accounts/${encodeURIComponent(id)}`, { method: 'DELETE' });
       }
     }
+  }
+
+  /** Live Composio toolkit catalog (for the admin enable/disable panel). */
+  async listToolkits(search?: string): Promise<ComposioCatalogEntry[]> {
+    const params = new URLSearchParams({ limit: '1000' });
+    if (search && search.trim()) params.set('search', search.trim());
+    const result = await this.request(`/toolkits?${params.toString()}`);
+    const items = (pick<unknown[]>(result, 'items', 'data') as unknown[]) ?? [];
+    const out: ComposioCatalogEntry[] = [];
+    for (const it of items) {
+      const slug = pick<string>(it, 'slug');
+      if (!slug) continue;
+      const meta = pick(it, 'meta');
+      out.push({
+        slug: slug.toLowerCase(),
+        name: pick<string>(it, 'name') ?? slug,
+        logo: pick<string>(meta, 'logo') ?? null,
+        description: pick<string>(meta, 'description') ?? null,
+        toolsCount: pick<number>(meta, 'tools_count', 'toolsCount') ?? null,
+      });
+    }
+    return out;
+  }
+
+  /**
+   * Delete every connected account for a toolkit across ALL users — used when an
+   * admin disables a toolkit globally. Best-effort: logs and continues on errors,
+   * returns the number successfully disconnected.
+   */
+  async disconnectToolkitForAll(toolkit: string): Promise<number> {
+    const result = await this.request(
+      `/connected_accounts?toolkit_slugs=${encodeURIComponent(toolkit)}&limit=1000`,
+    );
+    const items = (pick<unknown[]>(result, 'items', 'data') as unknown[]) ?? [];
+    let count = 0;
+    for (const it of items) {
+      const id = pick<string>(it, 'id');
+      if (!id) continue;
+      try {
+        await this.request(`/connected_accounts/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        count += 1;
+      } catch (err) {
+        logger.warn({ err, id, toolkit }, 'composio: disconnect-all could not delete one account');
+      }
+    }
+    return count;
   }
 }
 

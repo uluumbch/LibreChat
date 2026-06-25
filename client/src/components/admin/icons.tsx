@@ -61,6 +61,17 @@ export const ClockIcon = ({ size = 16 }: IconProps): JSX.Element =>
 export const ShieldIcon = ({ size = 15, style }: IconProps): JSX.Element =>
   stroke(size, <path d="M12 2l8 3v6c0 5-3.5 8.5-8 11-4.5-2.5-8-6-8-11V5Z" />, style);
 
+export const PlugIcon = ({ size = 16, style }: IconProps): JSX.Element =>
+  stroke(
+    size,
+    <>
+      <path d="M9 2v6M15 2v6" />
+      <path d="M6 8h12v3a6 6 0 0 1-12 0V8Z" />
+      <path d="M12 17v5" />
+    </>,
+    style,
+  );
+
 export const SearchIcon = ({ size = 14 }: IconProps): JSX.Element =>
   stroke(
     size,

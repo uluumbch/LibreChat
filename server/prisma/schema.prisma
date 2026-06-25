@@ -108,3 +108,13 @@ model Message {
   @@index([conversationId, createdAt])
   @@map("messages")
 }
+
+// A Composio toolkit the admin has enabled product-wide. Presence of a row = enabled;
+// it becomes grantable per user via User.composioToolkits. `name` is cached for display.
+model ComposioToolkit {
+  slug      String   @id
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("composio_toolkits")
+}

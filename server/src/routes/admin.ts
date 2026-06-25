@@ -8,11 +8,13 @@ import type {
   AdminUser,
   AdminUserDetail,
   AdminUserToolset,
+  AdminComposioToolkit,
   ComposioToolkit,
   SkillOption,
 } from '@hermes/shared';
 import { prisma } from '../db';
 import { config } from '../config';
+import { logger } from '../logger';
 import { asyncHandler, badRequest, notFound } from '../errors';
 import { requireAdmin, requireAuth } from '../auth/middleware';
 import { gatewayPool } from '../hermes/pool';
@@ -21,22 +23,30 @@ import { toApiUser, toCreditBalance } from '../users/profile';
 import { provisionDefaults } from '../users/provision';
 import { aggregateUsage, dailyUsageSeries } from '../billing/usage';
 import { JOB_NAME_RE, toJobSummary, userJobPrefix, userJobTag } from '../jobs/scope';
-import { COMPOSIO_CATALOG, COMPOSIO_SLUGS, isCatalogSlug } from '../composio/catalog';
+import { getEnabledSlugs, getEnabledToolkits } from '../composio/catalog';
+import { composio } from '../composio/client';
 
-/** Admin-supplied Composio toolkit allowlist, validated against the catalog. */
-const composioToolkitsField = z
-  .array(z.string().max(64))
-  .max(COMPOSIO_SLUGS.length)
-  .refine((arr) => arr.every(isCatalogSlug), { message: 'Unknown Composio toolkit' })
-  .optional();
+/** Admin-supplied Composio toolkit allowlist (validated against the enabled set in the handler). */
+const composioToolkitsField = z.array(z.string().max(64)).max(200).optional();
 
-/** Build the per-user Composio catalog (admin view: `allowed` reflects the grant). */
-function composioCatalogFor(allowed: string[]): ComposioToolkit[] {
-  const granted = new Set(allowed);
-  return COMPOSIO_CATALOG.map((t) => ({
+/** Reject a per-user grant that includes a toolkit not enabled product-wide. */
+async function assertToolkitsEnabled(slugs: string[] | undefined): Promise<void> {
+  if (!slugs || slugs.length === 0) return;
+  const enabled = await getEnabledSlugs();
+  const bad = slugs.filter((s) => !enabled.has(s));
+  if (bad.length > 0) {
+    throw badRequest(`Toolkit(s) not enabled: ${bad.join(', ')}`, 'toolkit_not_enabled');
+  }
+}
+
+/** Build the per-user Composio catalog (admin view: only globally-enabled toolkits; `allowed` = the grant). */
+async function composioCatalogFor(granted: string[]): Promise<ComposioToolkit[]> {
+  const grantedSet = new Set(granted);
+  const enabled = await getEnabledToolkits();
+  return enabled.map((t) => ({
     slug: t.slug,
     name: t.name,
-    allowed: granted.has(t.slug),
+    allowed: grantedSet.has(t.slug),
     connected: false,
   }));
 }
@@ -233,12 +243,13 @@ adminRouter.get(
     if (!user) {
       throw notFound('User not found');
     }
-    const [count, toolsets, skills, jobs, usage] = await Promise.all([
+    const [count, toolsets, skills, jobs, usage, composioCatalog] = await Promise.all([
       prisma.conversation.count({ where: { userId: id } }),
       userToolsets(user),
       userSkills(),
       userJobs(id),
       userUsage(id),
+      composioCatalogFor(user.composioToolkits),
     ]);
     const detail: AdminUserDetail = {
       ...toAdminUser(user, count),
@@ -249,7 +260,7 @@ adminRouter.get(
       enabledSkills: user.enabledSkills,
       composioEnabled: user.composioEnabled,
       composioToolkits: user.composioToolkits,
-      composioCatalog: composioCatalogFor(user.composioToolkits),
+      composioCatalog,
       jobs,
       usage,
     };
@@ -275,6 +286,7 @@ adminRouter.patch(
     if (input.model && !gatewayPool.hasModel(input.model)) {
       throw badRequest(`Unknown model: ${input.model}`, 'unknown_model');
     }
+    await assertToolkitsEnabled(input.composioToolkits);
     const exists = await prisma.user.findUnique({ where: { id }, select: { id: true } });
     if (!exists) {
       throw notFound('User not found');
@@ -336,6 +348,7 @@ adminRouter.post(
     if (input.model && !gatewayPool.hasModel(input.model)) {
       throw badRequest(`Unknown model: ${input.model}`, 'unknown_model');
     }
+    await assertToolkitsEnabled(input.composioToolkits);
     const email = input.email.toLowerCase();
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
@@ -481,5 +494,86 @@ adminRouter.delete(
   asyncHandler(async (req, res) => {
     await gateway().client.deleteMcpServer(requireParam(req, 'name'));
     res.status(204).end();
+  }),
+);
+
+// ── Composio toolkit catalog (global enable/disable) ─────────────────────────
+// Admin curates which Composio toolkits exist product-wide; only enabled ones
+// are grantable per user (User.composioToolkits). Disabling cascades: revoke the
+// grant from every user AND disconnect their connected accounts.
+
+adminRouter.get(
+  '/composio/toolkits',
+  asyncHandler(async (req, res) => {
+    if (!composio.isConfigured()) {
+      res.json({ configured: false, items: [] });
+      return;
+    }
+    const q = typeof req.query.q === 'string' ? req.query.q : undefined;
+    const [catalog, enabled] = await Promise.all([composio.listToolkits(q), getEnabledSlugs()]);
+    // Per-toolkit grant counts (only for enabled ones) so the UI can warn before disable.
+    const counts = new Map<string, number>();
+    await Promise.all(
+      [...enabled].map(async (slug) => {
+        counts.set(slug, await prisma.user.count({ where: { composioToolkits: { has: slug } } }));
+      }),
+    );
+    const items: AdminComposioToolkit[] = catalog.map((t) => ({
+      slug: t.slug,
+      name: t.name,
+      logo: t.logo,
+      description: t.description,
+      toolsCount: t.toolsCount,
+      enabled: enabled.has(t.slug),
+      userCount: counts.get(t.slug) ?? 0,
+    }));
+    res.json({ configured: true, items });
+  }),
+);
+
+const toggleComposioBody = z.object({
+  enabled: z.boolean(),
+  name: z.string().max(120).optional(),
+});
+
+adminRouter.patch(
+  '/composio/toolkits/:slug',
+  asyncHandler(async (req, res) => {
+    const slug = requireParam(req, 'slug').toLowerCase();
+    const input = toggleComposioBody.parse(req.body);
+
+    if (input.enabled) {
+      let name = input.name;
+      if (!name && composio.isConfigured()) {
+        const found = (await composio.listToolkits(slug)).find((t) => t.slug === slug);
+        name = found?.name;
+      }
+      await prisma.composioToolkit.upsert({
+        where: { slug },
+        update: { name: name ?? slug },
+        create: { slug, name: name ?? slug },
+      });
+      res.json({ slug, enabled: true, disconnected: 0, revokedFrom: 0 });
+      return;
+    }
+
+    // Disable: delete the row + strip the slug from every user's grant (one txn)…
+    const revokedFrom = await prisma.$transaction(async (tx) => {
+      await tx.composioToolkit.deleteMany({ where: { slug } });
+      return tx.$executeRaw`
+        UPDATE "users"
+        SET composio_toolkits = array_remove(composio_toolkits, ${slug})
+        WHERE ${slug} = ANY(composio_toolkits)`;
+    });
+    // …then disconnect everyone's Composio accounts for it (best-effort).
+    let disconnected = 0;
+    if (composio.isConfigured()) {
+      try {
+        disconnected = await composio.disconnectToolkitForAll(slug);
+      } catch (err) {
+        logger.warn({ err, slug }, 'composio: disconnect-all failed during disable');
+      }
+    }
+    res.json({ slug, enabled: false, disconnected, revokedFrom });
   }),
 );

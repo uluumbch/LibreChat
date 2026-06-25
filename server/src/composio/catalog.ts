@@ -1,33 +1,41 @@
 /**
- * The Composio toolkits (third-party services) this build exposes.
+ * The Composio toolkits enabled product-wide, managed by the admin
+ * (admin panel → Composio toolkits). Presence of a `composio_toolkits` row =
+ * enabled; only enabled toolkits are grantable per user (User.composioToolkits)
+ * and connectable from a user's settings.
  *
- * Hardcoded for now to keep the surface small and predictable. The slugs are
- * Composio toolkit slugs (lowercase) used both as the auth-config target and the
- * gateway toolkit allowlist value.
- *
- * TODO: fetch the live catalog from Composio (`GET /toolkits`) so admins can pick
- * from the full set instead of this curated list.
+ * The available catalog (what an admin can enable) is fetched live from Composio
+ * (see ComposioClient.listToolkits); this module owns the *enabled* set in our DB.
  */
+import { prisma } from '../db';
+
 export interface CatalogToolkit {
   slug: string;
   name: string;
 }
 
-export const COMPOSIO_CATALOG: readonly CatalogToolkit[] = [
-  { slug: 'googledrive', name: 'Google Drive' },
-  { slug: 'notion', name: 'Notion' },
-  { slug: 'googlesheets', name: 'Google Sheets' },
-] as const;
-
-const BY_SLUG = new Map(COMPOSIO_CATALOG.map((t) => [t.slug, t]));
-
-/** Valid catalog slugs, for validating admin-supplied allowlists. */
-export const COMPOSIO_SLUGS: readonly string[] = COMPOSIO_CATALOG.map((t) => t.slug);
-
-export function isCatalogSlug(slug: string): boolean {
-  return BY_SLUG.has(slug);
+/** All globally-enabled toolkits (admin-curated), ordered by name. */
+export async function getEnabledToolkits(): Promise<CatalogToolkit[]> {
+  const rows = await prisma.composioToolkit.findMany({
+    select: { slug: true, name: true },
+    orderBy: { name: 'asc' },
+  });
+  return rows;
 }
 
-export function toolkitName(slug: string): string {
-  return BY_SLUG.get(slug)?.name ?? slug;
+/** Just the enabled slugs, as a Set for membership checks. */
+export async function getEnabledSlugs(): Promise<Set<string>> {
+  const rows = await prisma.composioToolkit.findMany({ select: { slug: true } });
+  return new Set(rows.map((r) => r.slug));
+}
+
+export async function isEnabledToolkit(slug: string): Promise<boolean> {
+  const row = await prisma.composioToolkit.findUnique({ where: { slug }, select: { slug: true } });
+  return row != null;
+}
+
+/** Display name for a slug — the cached catalog name, else a passed fallback, else the slug. */
+export async function toolkitName(slug: string, fallback?: string): Promise<string> {
+  const row = await prisma.composioToolkit.findUnique({ where: { slug }, select: { name: true } });
+  return row?.name ?? fallback ?? slug;
 }

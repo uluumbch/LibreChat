@@ -14,6 +14,7 @@ import type {
   Conversation,
   ConversationUsage,
   CreateConversationRequest,
+  AdminComposioToolkitsResponse,
   ComposioConnectResponse,
   ComposioToolkitsResponse,
   CreateJobRequest,
@@ -319,6 +320,36 @@ export function useDeleteMcpServer() {
 }
 
 /* --------------------------- Composio (third-party apps) --------------------------- */
+
+export function useComposioAdminToolkits(query: string) {
+  return useQuery({
+    queryKey: queryKeys.adminComposio(query),
+    queryFn: () =>
+      apiRequest<AdminComposioToolkitsResponse>(
+        'GET',
+        `/api/admin/composio/toolkits${query ? `?q=${encodeURIComponent(query)}` : ''}`,
+      ),
+    staleTime: 15 * 1000,
+  });
+}
+
+export function useToggleComposioToolkit() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { slug: string; enabled: boolean; name?: string }) =>
+      apiRequest<{ slug: string; enabled: boolean; disconnected: number; revokedFrom: number }>(
+        'PATCH',
+        `/api/admin/composio/toolkits/${encodeURIComponent(vars.slug)}`,
+        { enabled: vars.enabled, name: vars.name },
+      ),
+    // Refresh the catalog AND the admin branch so an open UserDrawer's grantable
+    // list (detail.composioCatalog) reflects the new enabled set.
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'composio'] });
+      void queryClient.invalidateQueries({ queryKey: ['admin'] });
+    },
+  });
+}
 
 export function useComposioToolkits() {
   return useQuery({
