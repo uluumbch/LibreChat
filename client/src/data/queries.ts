@@ -15,11 +15,15 @@ import type {
   ConversationUsage,
   CreateConversationRequest,
   AdminComposioToolkitsResponse,
+  AdminLlmProvider,
+  AdminLlmProvidersResponse,
   AdminSlashCommand,
   AdminSlashCommandsResponse,
   ComposioConnectResponse,
   ComposioToolkitsResponse,
   CreateJobRequest,
+  UpsertLlmModelRequest,
+  UpsertLlmProviderRequest,
   UpsertSlashCommandRequest,
   UserSlashCommandsResponse,
   CreateMcpServerRequest,
@@ -320,6 +324,76 @@ export function useDeleteMcpServer() {
     mutationFn: (name: string) =>
       apiRequest<void>('DELETE', `/api/admin/mcp-servers/${encodeURIComponent(name)}`),
     onSuccess: () => invalidateMcp(queryClient),
+  });
+}
+
+/* --------------------------- First-party LLM providers --------------------------- */
+
+export function useAdminLlmProviders() {
+  return useQuery({
+    queryKey: queryKeys.adminLlm,
+    queryFn: () => apiRequest<AdminLlmProvidersResponse>('GET', '/api/admin/llm/providers'),
+    staleTime: 15 * 1000,
+  });
+}
+
+/** After any provider/model change, refresh the catalog AND the admin branch so an open
+ *  UserDrawer's grantable list (detail.llmCatalog) reflects the new enabled set. */
+function invalidateLlm(queryClient: ReturnType<typeof useQueryClient>): void {
+  void queryClient.invalidateQueries({ queryKey: queryKeys.adminLlm });
+  void queryClient.invalidateQueries({ queryKey: ['admin'] });
+}
+
+export function useCreateLlmProvider() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpsertLlmProviderRequest) =>
+      apiRequest<AdminLlmProvider>('POST', '/api/admin/llm/providers', body),
+    onSuccess: () => invalidateLlm(queryClient),
+  });
+}
+
+export function useUpdateLlmProvider() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Partial<UpsertLlmProviderRequest> }) =>
+      apiRequest<AdminLlmProvider>('PATCH', `/api/admin/llm/providers/${id}`, body),
+    onSuccess: () => invalidateLlm(queryClient),
+  });
+}
+
+export function useDeleteLlmProvider() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiRequest<void>('DELETE', `/api/admin/llm/providers/${id}`),
+    onSuccess: () => invalidateLlm(queryClient),
+  });
+}
+
+export function useCreateLlmModel() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ providerId, body }: { providerId: string; body: UpsertLlmModelRequest }) =>
+      apiRequest('POST', `/api/admin/llm/providers/${providerId}/models`, body),
+    onSuccess: () => invalidateLlm(queryClient),
+  });
+}
+
+export function useUpdateLlmModel() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ slug, body }: { slug: string; body: Partial<Omit<UpsertLlmModelRequest, 'slug'>> }) =>
+      apiRequest('PATCH', `/api/admin/llm/models/${encodeURIComponent(slug)}`, body),
+    onSuccess: () => invalidateLlm(queryClient),
+  });
+}
+
+export function useDeleteLlmModel() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (slug: string) =>
+      apiRequest<void>('DELETE', `/api/admin/llm/models/${encodeURIComponent(slug)}`),
+    onSuccess: () => invalidateLlm(queryClient),
   });
 }
 

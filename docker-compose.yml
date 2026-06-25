@@ -99,6 +99,9 @@ services:
       # where the browser returns after OAuth (defaults to the SPA origin).
       COMPOSIO_API_KEY: ${COMPOSIO_API_KEY:-}
       COMPOSIO_REDIRECT_URL: ${COMPOSIO_REDIRECT_URL:-}
+      # Master key for encrypting first-party LLM provider API keys at rest (AES-256-GCM).
+      # 64 hex chars or 32-byte base64. Unset = first-party providers report "not configured".
+      SECRETS_KEY: ${SECRETS_KEY:-}
       # Reliable file watching on bind mounts (macOS/Windows Docker).
       CHOKIDAR_USEPOLLING: 'true'
     ports:

@@ -12,6 +12,7 @@ import { config } from '../config';
 import { asyncHandler, badRequest, notFound } from '../errors';
 import { getUserId, requireAuth } from '../auth/middleware';
 import { gatewayPool } from '../hermes/pool';
+import { assertModelSelectable } from '../llm/catalog';
 import { requireParam } from '../http';
 import { toJsonInput } from '../json';
 import { aggregateUsage } from '../billing/usage';
@@ -71,11 +72,14 @@ conversationsRouter.post(
   asyncHandler(async (req, res) => {
     const userId = getUserId(req);
     const input = createBody.parse(req.body);
-    const user = await prisma.user.findUnique({ where: { id: userId }, select: { model: true } });
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { model: true, allowedModels: true },
+    });
     const model = input.model ?? user?.model ?? config.defaultModel;
-    if (!gatewayPool.hasModel(model)) {
-      throw badRequest(`Unknown model: ${model}`, 'unknown_model');
-    }
+    // A built-in pool model OR an admin-managed first-party model the user has been granted is valid;
+    // `hasModel` alone would (wrongly) reject every granted first-party model since none are pooled.
+    await assertModelSelectable(model, user?.allowedModels ?? []);
     const conversation = await prisma.conversation.create({
       data: { userId, title: input.title?.trim() || 'New Chat', model },
     });

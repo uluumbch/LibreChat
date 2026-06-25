@@ -7,6 +7,7 @@ import { HttpError, notFound, serviceBusy } from '../errors';
 import { gatewayPool } from '../hermes/pool';
 import { sessionKeyFor } from '../users/provision';
 import { composioTurnFields } from '../composio/client';
+import { llmTurnFields } from '../llm/turnFields';
 import { toApiMessage } from '../messages/mapper';
 import { SseWriter } from './sse';
 import { parseSse } from './parse';
@@ -78,6 +79,8 @@ export async function runChatTurnViaRuns(params: RunsChatTurnParams): Promise<vo
   let errored = false;
   let runId: string | null = null;
 
+  const llmFields = await llmTurnFields(ctx.conversation.model ?? ctx.user.model);
+
   const release = await ctx.pooled.acquire();
   try {
     const created = await ctx.pooled.client.createRun(
@@ -86,10 +89,13 @@ export async function runChatTurnViaRuns(params: RunsChatTurnParams): Promise<vo
         instructions: ctx.user.instructions ?? undefined,
         session_id: sessionId,
         conversation_history: history,
+        // Built-in pool model by default; an admin-managed model overrides via `...llmFields`
+        // (which also carries provider/api_key/base_url for the per-turn credential injection).
         model: ctx.pooled.model,
         allowed_toolsets: overrideToolsets ?? (ctx.user.enabledToolsets.length > 0 ? ctx.user.enabledToolsets : undefined),
         allowed_skills: overrideSkills ?? (ctx.user.enabledSkills.length > 0 ? ctx.user.enabledSkills : undefined),
         ...composioTurnFields(ctx.user, userId),
+        ...llmFields,
       },
       { sessionKey: sessionKeyFor(userId) },
     );

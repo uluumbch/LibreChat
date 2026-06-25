@@ -183,6 +183,46 @@ opt-in, independent of the toolset allowlist). `_run_agent` / `_handle_runs` thr
 Installs the `composio` Python SDK outside the frozen `uv sync` (`uv pip install composio`), so no
 `uv.lock` regen is needed.
 
+## Part E — per-turn first-party provider override
+
+Lets an admin register first-party providers (Gemini, OpenAI, Anthropic, any OpenAI-compatible
+endpoint) with an API key **encrypted in our DB**, and grant models to users. At chat time the server
+injects the provider's decrypted credentials for **that turn**, so any pooled gateway can serve the
+selected model — no per-provider containers. All changes in **`gateway/platforms/api_server.py`**;
+unlike Composio this needs **no `session_context.py` carrier** because nothing deep in the stack reads
+the credentials — only `_create_agent` does.
+
+### E1. New wire fields (request body)
+
+`provider`, `model`, `api_key`, `base_url`, `api_mode` — all optional strings, parsed leniently with
+the existing `_normalize_composio_user_id` (a generic str-or-None normalizer). Absent fields preserve
+the gateway's configured default (byte-identical legacy behavior). Carried on both the session-chat
+and runs bodies.
+
+### E2. `_create_agent(..., model_override, provider_override, api_key_override, base_url_override, api_mode_override)`
+
+After `_resolve_runtime_agent_kwargs()` + `_resolve_gateway_model()`, when **`api_key_override`** is
+present (the signal a first-party model was selected) it re-points the LLM client for the turn:
+overwrite `api_key`/`provider`/`base_url`, clear `command`/`args` (CLI-provider fields), and set
+`api_mode = api_mode_override or None` (None = let the agent auto-detect from `base_url`). `model` is
+replaced by `model_override`. A `logger.warning` records provider/base_url/model — **never the key**.
+Agents are created per request (the runs path creates the agent *before* `set_session_vars`), so
+concurrent turns never share an LLM client.
+
+### E3. Thread-through
+
+- **Sessions engine**: `_run_agent(..., model_override, provider_override, api_key_override,
+  base_url_override, api_mode_override)` forwards to `_create_agent`; both session-chat handlers
+  populate them from the body.
+- **Runs engine**: `_handle_runs` parses the five fields and passes them to `_create_agent` in
+  `_run_and_close`.
+
+The server side lives in `server/src/llm/` (`catalog.ts` resolves the enabled model + provider;
+`turnFields.ts` decrypts the key and maps `kind` → `provider`/`base_url`/`api_mode`), injected next to
+`composioTurnFields` in `server/src/chat/stream.ts` + `runs.ts`. Keys are encrypted with
+`server/src/crypto/secrets.ts` (AES-256-GCM, `SECRETS_KEY`). See `docs/...` and the `llm_providers` /
+`llm_models` tables. Grep anchors: `api_key_override`, `provider_override`, `per-turn provider override`.
+
 ## Why a fork and not a per-user gateway
 
 The alternative — one gateway process per user, each with its own `config.yaml` — was evaluated and
@@ -213,7 +253,7 @@ for f in gateway/platforms/api_server.py gateway/session_context.py agent/skill_
 
 | File | Part | Change |
 |------|------|--------|
-| `gateway/platforms/api_server.py` | A + B + C + D | overrides + `set_session_vars` wiring; `/api/mcp-servers` routes + reload; MCP entries in `_handle_toolsets`; `composio_user_id_override` + `_normalize_composio_user_id` |
+| `gateway/platforms/api_server.py` | A + B + C + D + E | overrides + `set_session_vars` wiring; `/api/mcp-servers` routes + reload; MCP entries in `_handle_toolsets`; `composio_user_id_override` + `_normalize_composio_user_id`; per-turn provider override (`api_key_override` et al.) |
 | `gateway/session_context.py` | B + D | `HERMES_SESSION_ALLOWED_SKILLS`; `HERMES_SESSION_COMPOSIO_USER_ID` / `_TOOLKITS` contextvars |
 | `agent/skill_utils.py` | B | `get_allowed_skill_names`, `skill_is_allowed` |
 | `agent/prompt_builder.py` | B | allowlist read + cache key + index filters |

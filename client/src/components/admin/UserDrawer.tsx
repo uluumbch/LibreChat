@@ -128,6 +128,7 @@ export function UserDrawer({
   const [composioEnabled, setComposioEnabled] = useState(false);
   const [composioApps, setComposioApps] = useState<{ slug: string; name: string; allowed: boolean }[]>([]);
   const [commands, setCommands] = useState<{ name: string; description: string; allowed: boolean }[]>([]);
+  const [modelGrants, setModelGrants] = useState<{ slug: string; label: string; provider: string; allowed: boolean }[]>([]);
   const [tab, setTab] = useState<'overview' | 'profile' | 'tools' | 'apps'>('overview');
 
   useEffect(() => {
@@ -154,16 +155,30 @@ export function UserDrawer({
           allowed: c.allowed,
         })),
       );
+      setModelGrants(
+        detail.llmCatalog.map((m) => ({
+          slug: m.slug,
+          label: m.label,
+          provider: m.provider,
+          allowed: m.allowed,
+        })),
+      );
     }
   }, [detail]);
 
   const modelOptions = useMemo(() => {
+    // Built-in pool models from discovery + the first-party models granted to this user.
     const ids = new Set(modelsQuery.data?.items.map((m) => m.id) ?? []);
+    for (const g of modelGrants) {
+      if (g.allowed) {
+        ids.add(g.slug);
+      }
+    }
     if (model) {
       ids.add(model);
     }
     return [...ids];
-  }, [modelsQuery.data, model]);
+  }, [modelsQuery.data, modelGrants, model]);
 
   const enabledCount = toolsets.filter((t) => t.enabled).length;
   const enabledSkillCount = skills.filter((s) => s.enabled).length;
@@ -180,6 +195,7 @@ export function UserDrawer({
         composioEnabled,
         composioToolkits: composioApps.filter((a) => a.allowed).map((a) => a.slug),
         enabledCommands: commands.filter((c) => c.allowed).map((c) => c.name),
+        allowedModels: modelGrants.filter((m) => m.allowed).map((m) => m.slug),
       },
     });
     onFlash('Agent profile saved');
@@ -452,7 +468,15 @@ export function UserDrawer({
                 <div style={{ position: 'relative' }}>
                   <select
                     value={model}
-                    onChange={(e) => setModel(e.target.value)}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setModel(next);
+                      // Selecting a first-party model implies granting it, so model + grant never
+                      // desync (the server rejects an assigned model the user isn't granted).
+                      setModelGrants((prev) =>
+                        prev.map((g) => (g.slug === next ? { ...g, allowed: true } : g)),
+                      );
+                    }}
                     style={{
                       width: '100%',
                       appearance: 'none',
@@ -707,6 +731,52 @@ export function UserDrawer({
               )}
 
               {tab === 'apps' && (
+              <>
+              {modelGrants.length > 0 && (
+                <div style={{ marginBottom: 20 }}>
+                  <label style={{ display: 'block', fontSize: 12.5, fontWeight: 550, color: '#3f3f46', marginBottom: 9 }}>
+                    Models
+                  </label>
+                  <p style={{ margin: '0 0 9px', fontSize: 11.5, color: '#a1a1aa', lineHeight: 1.5 }}>
+                    First-party models this user may select. Granted models appear in their model picker.
+                  </p>
+                  <div style={{ border: '1px solid #ebebef', borderRadius: 12, overflow: 'hidden' }}>
+                    {modelGrants.map((m, i) => (
+                      <div
+                        key={m.slug}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 11,
+                          padding: '11px 13px',
+                          borderBottom: i === modelGrants.length - 1 ? 'none' : '1px solid #f4f4f6',
+                        }}
+                      >
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontSize: 13, fontWeight: 500, color: '#27272a' }}>
+                            {m.label} <span style={{ fontSize: 11, color: '#a1a1aa' }}>· {m.provider}</span>
+                          </div>
+                          <div style={{ fontFamily: MONO, fontSize: 11, color: '#a1a1aa' }}>{m.slug}</div>
+                        </div>
+                        <Toggle
+                          on={m.allowed}
+                          onClick={() => {
+                            setModelGrants((prev) =>
+                              prev.map((g) => (g.slug === m.slug ? { ...g, allowed: !g.allowed } : g)),
+                            );
+                            // Revoking the model the user currently has selected would leave an
+                            // invalid model+grant combo — fall back to the default model.
+                            if (m.allowed && model === m.slug) {
+                              setModel(modelsQuery.data?.defaultModel ?? '');
+                            }
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div style={{ marginBottom: 20 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 }}>
                   <label style={{ fontSize: 12.5, fontWeight: 550, color: '#3f3f46' }}>
@@ -766,6 +836,7 @@ export function UserDrawer({
                   </div>
                 )}
               </div>
+              </>
               )}
 
               {tab === 'overview' && detail.jobs.length > 0 && (

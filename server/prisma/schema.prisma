@@ -46,6 +46,10 @@ model User {
   // empty = inherit all globally-enabled commands; non-empty = allowlist (by name).
   enabledCommands  String[] @default([])    @map("enabled_commands")
 
+  // First-party LLM models the user is granted (by LlmModel.slug). Empty = only the built-in
+  // pool model. A non-empty allowlist; the user may select any granted (and globally-enabled) model.
+  allowedModels    String[] @default([])    @map("allowed_models")
+
   refreshTokens RefreshToken[]
   conversations Conversation[]
   messages      Message[]
@@ -121,6 +125,38 @@ model ComposioToolkit {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@map("composio_toolkits")
+}
+
+// A first-party LLM provider the admin has registered. The API key is encrypted at rest
+// (`apiKeyEnc`, AES-256-GCM) and never returned to the client. `kind` selects the upstream
+// protocol the gateway uses: gemini | openai | anthropic | openai-compatible (needs baseUrl).
+model LlmProvider {
+  id        String     @id @default(uuid()) @db.Uuid
+  name      String
+  kind      String
+  baseUrl   String?    @map("base_url")
+  apiKeyEnc String     @map("api_key_enc")
+  enabled   Boolean    @default(true)
+  models    LlmModel[]
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  @@map("llm_providers")
+}
+
+// A model offered by a provider. `slug` is the user-facing id (unique across providers, what the
+// user picks); `modelId` is the upstream id sent to the gateway. Globally grantable when enabled.
+model LlmModel {
+  slug       String      @id
+  providerId String      @map("provider_id") @db.Uuid
+  provider   LlmProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  modelId    String      @map("model_id")
+  label      String
+  enabled    Boolean     @default(true)
+  createdAt  DateTime    @default(now()) @map("created_at")
+
+  @@index([providerId])
+  @@map("llm_models")
 }
 
 // A curated slash command the admin defines product-wide. Three kinds (see `type`):

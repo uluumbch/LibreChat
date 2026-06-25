@@ -300,6 +300,66 @@ export interface ToggleComposioToolkitRequest {
   name?: string;
 }
 
+/* --------------------------- First-party LLM providers --------------------------- */
+
+/** Upstream protocol the gateway uses for a provider. */
+export const LLM_PROVIDER_KINDS = ['gemini', 'openai', 'anthropic', 'openai-compatible'] as const;
+export type LlmProviderKind = (typeof LLM_PROVIDER_KINDS)[number];
+
+/** A model offered by a provider, in the admin catalog. */
+export interface AdminLlmModel {
+  /** User-facing id (unique across providers) the user selects. */
+  slug: string;
+  /** Upstream model id sent to the gateway. */
+  modelId: string;
+  label: string;
+  enabled: boolean;
+}
+
+/** A registered provider in the admin catalog. The API key is never returned. */
+export interface AdminLlmProvider {
+  id: string;
+  name: string;
+  kind: LlmProviderKind;
+  baseUrl: string | null;
+  enabled: boolean;
+  /** Whether an encrypted API key is stored (the key itself is never sent to the client). */
+  hasKey: boolean;
+  models: AdminLlmModel[];
+}
+
+export interface AdminLlmProvidersResponse {
+  /** Whether a SECRETS_KEY is configured on the server (required to store keys). */
+  configured: boolean;
+  items: AdminLlmProvider[];
+}
+
+/** Create/update payload for a provider. On update, omit `apiKey` to keep the stored key. */
+export interface UpsertLlmProviderRequest {
+  name: string;
+  kind: LlmProviderKind;
+  baseUrl?: string | null;
+  apiKey?: string;
+  enabled?: boolean;
+}
+
+/** Create/update payload for a model under a provider. */
+export interface UpsertLlmModelRequest {
+  slug: string;
+  modelId: string;
+  label: string;
+  enabled?: boolean;
+}
+
+/** A grantable model (globally enabled) with this user's grant flag, for the admin drawer. */
+export interface AdminUserModel {
+  slug: string;
+  label: string;
+  /** Provider display name, for grouping in the UI. */
+  provider: string;
+  allowed: boolean;
+}
+
 /* --------------------------- Slash commands (curated) --------------------------- */
 
 /**
@@ -468,6 +528,10 @@ export interface AdminUserDetail extends AdminUser {
   commandCatalog: AdminUserCommand[];
   /** Command names enabled for this user (subset of `commandCatalog`). */
   enabledCommands: string[];
+  /** Globally-enabled first-party models, each with this user's grant flag. */
+  llmCatalog: AdminUserModel[];
+  /** Model slugs the user is granted (subset of `llmCatalog`). */
+  allowedModels: string[];
   jobs: JobSummary[];
   usage: UserUsageSummary;
 }
@@ -489,6 +553,7 @@ export interface UpdateUserRequest {
   composioEnabled?: boolean;
   composioToolkits?: string[];
   enabledCommands?: string[];
+  allowedModels?: string[];
 }
 
 export interface TopupRequest {
@@ -509,6 +574,7 @@ export interface InviteUserRequest {
   composioEnabled?: boolean;
   composioToolkits?: string[];
   enabledCommands?: string[];
+  allowedModels?: string[];
 }
 
 /** A scheduled job paired with the user who owns it (admin-wide view). */

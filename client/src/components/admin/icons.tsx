@@ -82,6 +82,16 @@ export const PlugIcon = ({ size = 16, style }: IconProps): JSX.Element =>
     style,
   );
 
+export const SparkIcon = ({ size = 16, style }: IconProps): JSX.Element =>
+  stroke(
+    size,
+    <>
+      <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8Z" />
+      <path d="M18 16l.7 2L21 18.7 19 19.4 18.3 21 17.6 19.4 16 18.7 17.6 18Z" />
+    </>,
+    style,
+  );
+
 export const SearchIcon = ({ size = 14 }: IconProps): JSX.Element =>
   stroke(
     size,

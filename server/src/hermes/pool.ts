@@ -175,6 +175,18 @@ export class GatewayPool {
     return this.byModel.has(model);
   }
 
+  /**
+   * Pick any least-loaded healthy gateway, regardless of model. Used for admin-managed models
+   * whose credentials are injected per-turn — any pooled gateway (compute) can serve them.
+   */
+  resolveAny(): PooledGateway {
+    const pooled = this.list().reduce(preferGateway, this.list()[0]!);
+    if (!pooled) {
+      throw new HttpError(503, 'No Hermes gateway available', 'hermes_unreachable');
+    }
+    return pooled;
+  }
+
   /** Resolve a gateway for a model (least-loaded healthy), falling back to the default model. */
   resolve(model: string | null): PooledGateway {
     const candidates =

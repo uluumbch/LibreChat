@@ -33,7 +33,13 @@ export function selectGateway(
     user.tier === 'dedicated' && user.dedicatedGatewayId
       ? pool.byGatewayId(user.dedicatedGatewayId)
       : undefined;
-  return pinned ?? dedicated ?? pool.resolve(conversation.model ?? user.model);
+  if (pinned ?? dedicated) {
+    return (pinned ?? dedicated)!;
+  }
+  // A built-in pool model routes by model; an admin-managed model (not served by any pooled
+  // gateway) runs on any least-loaded healthy gateway — its credentials are injected per turn.
+  const model = conversation.model ?? user.model;
+  return model && !pool.hasModel(model) ? pool.resolveAny() : pool.resolve(model);
 }
 
 export function deriveTitle(text: string): string {
@@ -74,9 +80,10 @@ export async function ensureSession(ctx: TurnContext): Promise<string> {
     model: ctx.pooled.model,
     system_prompt: ctx.user.instructions ?? undefined,
   });
+  const selectedModel = ctx.conversation.model ?? ctx.user.model;
   await prisma.conversation.update({
     where: { id: ctx.conversation.id },
-    data: { hermesSessionId: session.id, hermesGatewayId: ctx.pooled.id, model: ctx.pooled.model },
+    data: { hermesSessionId: session.id, hermesGatewayId: ctx.pooled.id, model: selectedModel },
   });
   return session.id;
 }

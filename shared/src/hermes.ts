@@ -73,6 +73,18 @@ export interface HermesSessionChatRequest {
   composio_user_id?: string;
   /** Composio toolkit allowlist (admin-granted ∩ user-connected) for this turn. */
   composio_toolkits?: string[];
+  /**
+   * Per-turn first-party provider override. When the user selects an admin-managed model, the
+   * server injects the provider's decrypted credentials so any pooled gateway can serve it.
+   * Omit/empty = inherit the gateway's process-level provider+model. See the gateway fork
+   * (gateway/session_context.py) and docs/gateway-modifications.md (Part E).
+   */
+  provider?: string;
+  model?: string;
+  api_key?: string;
+  base_url?: string;
+  /** Wire protocol (e.g. 'chat_completions', 'anthropic_messages'). Omit = gateway auto-detects. */
+  api_mode?: string;
 }
 
 export interface HermesUsageTokens {
@@ -205,6 +217,11 @@ export interface HermesRunRequest {
   composio_user_id?: string;
   /** Composio toolkit allowlist (see HermesSessionChatRequest.composio_toolkits). */
   composio_toolkits?: string[];
+  /** Per-run first-party provider override (see HermesSessionChatRequest.provider). */
+  provider?: string;
+  api_key?: string;
+  base_url?: string;
+  api_mode?: string;
 }
 
 export interface HermesRunCreatedResponse {

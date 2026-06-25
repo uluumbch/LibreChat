@@ -15,6 +15,7 @@ export const queryKeys = {
   adminJobs: ['admin', 'jobs'] as const,
   adminMcp: ['admin', 'mcp'] as const,
   adminComposio: (q: string) => ['admin', 'composio', q] as const,
+  adminLlm: ['admin', 'llm'] as const,
   composioToolkits: ['composio', 'toolkits'] as const,
   adminCommands: ['admin', 'commands'] as const,
   commands: ['commands'] as const,

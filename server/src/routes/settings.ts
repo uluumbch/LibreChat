@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db';
-import { asyncHandler, badRequest, unauthorized } from '../errors';
+import { asyncHandler, unauthorized } from '../errors';
 import { getUserId, requireAuth } from '../auth/middleware';
-import { gatewayPool } from '../hermes/pool';
+import { assertModelSelectable } from '../llm/catalog';
 import { toApiUser } from '../users/profile';
 
 const updateBody = z.object({
@@ -32,8 +32,12 @@ profileRouter.patch(
   '/',
   asyncHandler(async (req, res) => {
     const input = updateBody.parse(req.body);
-    if (input.model && !gatewayPool.hasModel(input.model)) {
-      throw badRequest(`Unknown model: ${input.model}`, 'unknown_model');
+    if (input.model) {
+      const current = await prisma.user.findUnique({
+        where: { id: getUserId(req) },
+        select: { allowedModels: true },
+      });
+      await assertModelSelectable(input.model, current?.allowedModels ?? []);
     }
     const user = await prisma.user.update({
       where: { id: getUserId(req) },

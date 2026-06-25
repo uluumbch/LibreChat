@@ -27,6 +27,9 @@ const envSchema = z.object({
   JWT_REFRESH_TTL: z.coerce.number().default(604800),
   HERMES_GATEWAYS: z.string().min(1),
   HERMES_DEFAULT_MODEL: z.string().optional(),
+  // Master key for encrypting secrets at rest (first-party LLM provider API keys). 64 hex chars or
+  // 32-byte base64. Optional: when unset, the first-party providers feature is "not configured".
+  SECRETS_KEY: emptyToUndefined(z.string()).optional(),
   USER_MAX_CONCURRENT_TURNS: z.coerce.number().int().positive().default(3),
   USER_TURNS_PER_MINUTE: z.coerce.number().int().positive().default(20),
   DEDICATED_MAX_CONCURRENT_TURNS: z.coerce.number().int().positive().default(10),
@@ -82,6 +85,7 @@ function loadConfig() {
     },
     gateways,
     defaultModel,
+    secretsKey: env.SECRETS_KEY ?? null,
     quota: {
       free: {
         maxConcurrentTurns: env.USER_MAX_CONCURRENT_TURNS,

@@ -10,12 +10,15 @@ import type {
   AdminUserCommand,
   AdminUserDetail,
   AdminUserToolset,
+  AdminUserModel,
   AdminComposioToolkit,
+  AdminLlmProvider,
   ComposioToolkit,
+  LlmProviderKind,
   ServerActionKey,
   SkillOption,
 } from '@hermes/shared';
-import { SERVER_ACTION_KEYS } from '@hermes/shared';
+import { SERVER_ACTION_KEYS, LLM_PROVIDER_KINDS } from '@hermes/shared';
 import { prisma } from '../db';
 import { config } from '../config';
 import { logger } from '../logger';
@@ -30,6 +33,8 @@ import { JOB_NAME_RE, toJobSummary, userJobPrefix, userJobTag } from '../jobs/sc
 import { getEnabledSlugs, getEnabledToolkits } from '../composio/catalog';
 import { getEnabledCommands } from '../commands/catalog';
 import { composio } from '../composio/client';
+import { assertModelsEnabled, assertModelSelectable, isModelSelectable, getEnabledModels } from '../llm/catalog';
+import { encrypt, secretsConfigured } from '../crypto/secrets';
 
 /** Admin-supplied Composio toolkit allowlist (validated against the enabled set in the handler). */
 const composioToolkitsField = z.array(z.string().max(64)).max(200).optional();
@@ -53,6 +58,21 @@ async function composioCatalogFor(granted: string[]): Promise<ComposioToolkit[]>
     name: t.name,
     allowed: grantedSet.has(t.slug),
     connected: false,
+  }));
+}
+
+/** Admin-supplied model grant allowlist (validated against the enabled set in the handler). */
+const allowedModelsField = z.array(z.string().max(120)).max(200).optional();
+
+/** Build the per-user model catalog (only globally-enabled models; `allowed` = the grant). */
+async function llmCatalogFor(granted: string[]): Promise<AdminUserModel[]> {
+  const grantedSet = new Set(granted);
+  const enabled = await getEnabledModels();
+  return enabled.map((m) => ({
+    slug: m.slug,
+    label: m.label,
+    provider: m.provider,
+    allowed: grantedSet.has(m.slug),
   }));
 }
 
@@ -273,15 +293,17 @@ adminRouter.get(
     if (!user) {
       throw notFound('User not found');
     }
-    const [count, toolsets, skills, jobs, usage, composioCatalog, commandCatalog] = await Promise.all([
-      prisma.conversation.count({ where: { userId: id } }),
-      userToolsets(user),
-      userSkills(),
-      userJobs(id),
-      userUsage(id),
-      composioCatalogFor(user.composioToolkits),
-      commandCatalogFor(user.enabledCommands),
-    ]);
+    const [count, toolsets, skills, jobs, usage, composioCatalog, commandCatalog, llmCatalog] =
+      await Promise.all([
+        prisma.conversation.count({ where: { userId: id } }),
+        userToolsets(user),
+        userSkills(),
+        userJobs(id),
+        userUsage(id),
+        composioCatalogFor(user.composioToolkits),
+        commandCatalogFor(user.enabledCommands),
+        llmCatalogFor(user.allowedModels),
+      ]);
     const detail: AdminUserDetail = {
       ...toAdminUser(user, count),
       instructions: user.instructions ?? null,
@@ -294,6 +316,8 @@ adminRouter.get(
       composioCatalog,
       commandCatalog,
       enabledCommands: user.enabledCommands,
+      llmCatalog,
+      allowedModels: user.allowedModels,
       jobs,
       usage,
     };
@@ -310,6 +334,7 @@ const updateBody = z.object({
   composioEnabled: z.boolean().optional(),
   composioToolkits: composioToolkitsField,
   enabledCommands: enabledCommandsField,
+  allowedModels: allowedModelsField,
 });
 
 adminRouter.patch(
@@ -317,19 +342,30 @@ adminRouter.patch(
   asyncHandler(async (req, res) => {
     const id = requireParam(req, 'id');
     const input = updateBody.parse(req.body);
-    if (input.model && !gatewayPool.hasModel(input.model)) {
-      throw badRequest(`Unknown model: ${input.model}`, 'unknown_model');
-    }
     await assertToolkitsEnabled(input.composioToolkits);
     await assertCommandsEnabled(input.enabledCommands);
-    const exists = await prisma.user.findUnique({ where: { id }, select: { id: true } });
+    await assertModelsEnabled(input.allowedModels);
+    const exists = await prisma.user.findUnique({
+      where: { id },
+      select: { id: true, allowedModels: true, model: true },
+    });
     if (!exists) {
       throw notFound('User not found');
     }
+    const effectiveAllowed = input.allowedModels ?? exists.allowedModels;
+    // Vet an explicitly-assigned model against the grant in effect after this update.
+    await assertModelSelectable(input.model, effectiveAllowed);
+    // Revoking a grant must not leave the user pinned to a now-forbidden model: when the grant
+    // changes and the stored model is no longer selectable, clear it back to the default.
+    const clearDanglingModel =
+      input.model === undefined &&
+      input.allowedModels !== undefined &&
+      !(await isModelSelectable(exists.model, effectiveAllowed));
     const user = await prisma.user.update({
       where: { id },
       data: {
         ...(input.model !== undefined ? { model: input.model } : {}),
+        ...(clearDanglingModel ? { model: null } : {}),
         ...(input.instructions !== undefined ? { instructions: input.instructions } : {}),
         ...(input.status !== undefined ? { status: input.status } : {}),
         ...(input.enabledToolsets !== undefined ? { enabledToolsets: input.enabledToolsets } : {}),
@@ -337,6 +373,7 @@ adminRouter.patch(
         ...(input.composioEnabled !== undefined ? { composioEnabled: input.composioEnabled } : {}),
         ...(input.composioToolkits !== undefined ? { composioToolkits: input.composioToolkits } : {}),
         ...(input.enabledCommands !== undefined ? { enabledCommands: input.enabledCommands } : {}),
+        ...(input.allowedModels !== undefined ? { allowedModels: input.allowedModels } : {}),
       },
     });
     const count = await prisma.conversation.count({ where: { userId: id } });
@@ -375,16 +412,16 @@ const inviteBody = z.object({
   enabledSkills: z.array(z.string().max(80)).max(64).optional(),
   composioEnabled: z.boolean().optional(),
   composioToolkits: composioToolkitsField,
+  allowedModels: allowedModelsField,
 });
 
 adminRouter.post(
   '/invite',
   asyncHandler(async (req, res) => {
     const input = inviteBody.parse(req.body);
-    if (input.model && !gatewayPool.hasModel(input.model)) {
-      throw badRequest(`Unknown model: ${input.model}`, 'unknown_model');
-    }
     await assertToolkitsEnabled(input.composioToolkits);
+    await assertModelsEnabled(input.allowedModels);
+    await assertModelSelectable(input.model, input.allowedModels ?? []);
     const email = input.email.toLowerCase();
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
@@ -402,6 +439,7 @@ adminRouter.post(
         ...(input.enabledSkills !== undefined ? { enabledSkills: input.enabledSkills } : {}),
         ...(input.composioEnabled !== undefined ? { composioEnabled: input.composioEnabled } : {}),
         ...(input.composioToolkits !== undefined ? { composioToolkits: input.composioToolkits } : {}),
+        ...(input.allowedModels !== undefined ? { allowedModels: input.allowedModels } : {}),
       },
     });
     res.status(201).json(toAdminUser(user, 0));
@@ -611,6 +649,233 @@ adminRouter.patch(
       }
     }
     res.json({ slug, enabled: false, disconnected, revokedFrom });
+  }),
+);
+
+// ── First-party LLM providers + models ───────────────────────────────────────
+// Admin registers providers (API key encrypted at rest, never returned) and the
+// models under them. Enabled models are grantable per user (User.allowedModels)
+// and injected per-turn so any pooled gateway can serve them. Deleting a provider
+// or model strips its slugs from every user's grant.
+
+const providerKindField = z.enum(LLM_PROVIDER_KINDS);
+
+const createProviderBody = z.object({
+  name: z.string().min(1).max(120),
+  kind: providerKindField,
+  baseUrl: z.string().url().max(500).nullable().optional(),
+  apiKey: z.string().min(1).max(2000),
+  enabled: z.boolean().optional(),
+});
+
+const updateProviderBody = z.object({
+  name: z.string().min(1).max(120).optional(),
+  kind: providerKindField.optional(),
+  baseUrl: z.string().url().max(500).nullable().optional(),
+  apiKey: z.string().min(1).max(2000).optional(),
+  enabled: z.boolean().optional(),
+});
+
+const upsertModelBody = z.object({
+  slug: z.string().min(1).max(120),
+  modelId: z.string().min(1).max(200),
+  label: z.string().min(1).max(120),
+  enabled: z.boolean().optional(),
+});
+
+const updateModelBody = z.object({
+  modelId: z.string().min(1).max(200).optional(),
+  label: z.string().min(1).max(120).optional(),
+  enabled: z.boolean().optional(),
+});
+
+type ProviderWithModels = {
+  id: string;
+  name: string;
+  kind: string;
+  baseUrl: string | null;
+  apiKeyEnc: string;
+  enabled: boolean;
+  models: { slug: string; modelId: string; label: string; enabled: boolean }[];
+};
+
+function toAdminProvider(p: ProviderWithModels): AdminLlmProvider {
+  return {
+    id: p.id,
+    name: p.name,
+    kind: p.kind as LlmProviderKind,
+    baseUrl: p.baseUrl,
+    enabled: p.enabled,
+    hasKey: Boolean(p.apiKeyEnc),
+    models: p.models.map((m) => ({
+      slug: m.slug,
+      modelId: m.modelId,
+      label: m.label,
+      enabled: m.enabled,
+    })),
+  };
+}
+
+/** Reject openai-compatible providers without a base URL (the gateway needs an endpoint). */
+function assertBaseUrlForKind(kind: LlmProviderKind, baseUrl: string | null | undefined): void {
+  if (kind === 'openai-compatible' && !baseUrl) {
+    throw badRequest("kind 'openai-compatible' requires a baseUrl", 'base_url_required');
+  }
+}
+
+/** Remove model slugs from every user's grant allowlist (one statement per slug). */
+async function stripModelGrants(
+  tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
+  slugs: string[],
+): Promise<void> {
+  for (const slug of slugs) {
+    await tx.$executeRaw`
+      UPDATE "users"
+      SET allowed_models = array_remove(allowed_models, ${slug})
+      WHERE ${slug} = ANY(allowed_models)`;
+  }
+}
+
+adminRouter.get(
+  '/llm/providers',
+  asyncHandler(async (_req, res) => {
+    const providers = await prisma.llmProvider.findMany({
+      orderBy: { createdAt: 'asc' },
+      include: { models: { orderBy: { label: 'asc' } } },
+    });
+    res.json({ configured: secretsConfigured(), items: providers.map(toAdminProvider) });
+  }),
+);
+
+adminRouter.post(
+  '/llm/providers',
+  asyncHandler(async (req, res) => {
+    if (!secretsConfigured()) {
+      throw badRequest('SECRETS_KEY is not configured — cannot store provider keys', 'secrets_unconfigured');
+    }
+    const input = createProviderBody.parse(req.body);
+    assertBaseUrlForKind(input.kind, input.baseUrl);
+    const provider = await prisma.llmProvider.create({
+      data: {
+        name: input.name,
+        kind: input.kind,
+        baseUrl: input.baseUrl ?? null,
+        apiKeyEnc: encrypt(input.apiKey),
+        enabled: input.enabled ?? true,
+      },
+      include: { models: true },
+    });
+    res.status(201).json(toAdminProvider(provider));
+  }),
+);
+
+adminRouter.patch(
+  '/llm/providers/:id',
+  asyncHandler(async (req, res) => {
+    const id = requireParam(req, 'id');
+    const input = updateProviderBody.parse(req.body);
+    const existing = await prisma.llmProvider.findUnique({ where: { id } });
+    if (!existing) {
+      throw notFound('Provider not found');
+    }
+    const kind = input.kind ?? (existing.kind as LlmProviderKind);
+    const baseUrl = input.baseUrl !== undefined ? input.baseUrl : existing.baseUrl;
+    assertBaseUrlForKind(kind, baseUrl);
+    const provider = await prisma.llmProvider.update({
+      where: { id },
+      data: {
+        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.kind !== undefined ? { kind: input.kind } : {}),
+        ...(input.baseUrl !== undefined ? { baseUrl: input.baseUrl } : {}),
+        ...(input.apiKey !== undefined ? { apiKeyEnc: encrypt(input.apiKey) } : {}),
+        ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
+      },
+      include: { models: { orderBy: { label: 'asc' } } },
+    });
+    res.json(toAdminProvider(provider));
+  }),
+);
+
+adminRouter.delete(
+  '/llm/providers/:id',
+  asyncHandler(async (req, res) => {
+    const id = requireParam(req, 'id');
+    const provider = await prisma.llmProvider.findUnique({
+      where: { id },
+      include: { models: { select: { slug: true } } },
+    });
+    if (!provider) {
+      throw notFound('Provider not found');
+    }
+    const slugs = provider.models.map((m) => m.slug);
+    await prisma.$transaction(async (tx) => {
+      await tx.llmProvider.delete({ where: { id } }); // cascades model rows
+      await stripModelGrants(tx, slugs);
+    });
+    res.json({ id, deleted: true, revokedModels: slugs.length });
+  }),
+);
+
+adminRouter.post(
+  '/llm/providers/:id/models',
+  asyncHandler(async (req, res) => {
+    const id = requireParam(req, 'id');
+    const input = upsertModelBody.parse(req.body);
+    const provider = await prisma.llmProvider.findUnique({ where: { id }, select: { id: true } });
+    if (!provider) {
+      throw notFound('Provider not found');
+    }
+    const clash = await prisma.llmModel.findUnique({ where: { slug: input.slug }, select: { slug: true } });
+    if (clash) {
+      throw badRequest(`Model slug already in use: ${input.slug}`, 'model_slug_taken');
+    }
+    const model = await prisma.llmModel.create({
+      data: {
+        slug: input.slug,
+        providerId: id,
+        modelId: input.modelId,
+        label: input.label,
+        enabled: input.enabled ?? true,
+      },
+    });
+    res.status(201).json({ slug: model.slug, modelId: model.modelId, label: model.label, enabled: model.enabled });
+  }),
+);
+
+adminRouter.patch(
+  '/llm/models/:slug',
+  asyncHandler(async (req, res) => {
+    const slug = requireParam(req, 'slug');
+    const input = updateModelBody.parse(req.body);
+    const existing = await prisma.llmModel.findUnique({ where: { slug }, select: { slug: true } });
+    if (!existing) {
+      throw notFound('Model not found');
+    }
+    const model = await prisma.llmModel.update({
+      where: { slug },
+      data: {
+        ...(input.modelId !== undefined ? { modelId: input.modelId } : {}),
+        ...(input.label !== undefined ? { label: input.label } : {}),
+        ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
+      },
+    });
+    res.json({ slug: model.slug, modelId: model.modelId, label: model.label, enabled: model.enabled });
+  }),
+);
+
+adminRouter.delete(
+  '/llm/models/:slug',
+  asyncHandler(async (req, res) => {
+    const slug = requireParam(req, 'slug');
+    const existing = await prisma.llmModel.findUnique({ where: { slug }, select: { slug: true } });
+    if (!existing) {
+      throw notFound('Model not found');
+    }
+    await prisma.$transaction(async (tx) => {
+      await tx.llmModel.delete({ where: { slug } });
+      await stripModelGrants(tx, [slug]);
+    });
+    res.json({ slug, deleted: true });
   }),
 );
 

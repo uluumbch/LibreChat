@@ -7,6 +7,7 @@ import { logger } from '../logger';
 import { HttpError, serviceBusy } from '../errors';
 import { sessionKeyFor } from '../users/provision';
 import { composioTurnFields } from '../composio/client';
+import { llmTurnFields } from '../llm/turnFields';
 import { toApiMessage } from '../messages/mapper';
 import { toJsonInput } from '../json';
 import { SseWriter } from './sse';
@@ -70,6 +71,8 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<void> {
   let finishReason = 'stop';
   let errored = false;
 
+  const llmFields = await llmTurnFields(ctx.conversation.model ?? ctx.user.model);
+
   const release = await ctx.pooled.acquire();
   try {
     const response = await ctx.pooled.client.chatStream(
@@ -80,6 +83,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<void> {
         allowed_toolsets: overrideToolsets ?? (ctx.user.enabledToolsets.length > 0 ? ctx.user.enabledToolsets : undefined),
         allowed_skills: overrideSkills ?? (ctx.user.enabledSkills.length > 0 ? ctx.user.enabledSkills : undefined),
         ...composioTurnFields(ctx.user, userId),
+        ...llmFields,
       },
       { sessionKey: sessionKeyFor(userId), signal: controller.signal },
     );
