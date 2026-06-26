@@ -182,7 +182,6 @@ export interface ConversationUsage {
   reasoningTokens?: number;
   totalTokens?: number;
   creditsUsed?: number;
-  costUsd?: number;
 }
 
 /** A scheduled job (Hermes cron), scoped to the current user. */
@@ -314,6 +313,10 @@ export interface AdminLlmModel {
   modelId: string;
   label: string;
   enabled: boolean;
+  /** Admin-set USD price per 1,000,000 input tokens. Null = unpriced. */
+  inputUsdPerMTok: number | null;
+  /** Admin-set USD price per 1,000,000 output tokens. Null = unpriced. */
+  outputUsdPerMTok: number | null;
 }
 
 /** A registered provider in the admin catalog. The API key is never returned. */
@@ -349,6 +352,10 @@ export interface UpsertLlmModelRequest {
   modelId: string;
   label: string;
   enabled?: boolean;
+  /** USD per 1,000,000 input tokens. Null clears the price; omit to leave unchanged (on update). */
+  inputUsdPerMTok?: number | null;
+  /** USD per 1,000,000 output tokens. Null clears the price; omit to leave unchanged (on update). */
+  outputUsdPerMTok?: number | null;
 }
 
 /** A grantable model (globally enabled) with this user's grant flag, for the admin drawer. */
@@ -596,6 +603,8 @@ export interface UsagePoint {
   credits: number;
   /** Assistant replies in the bucket. */
   messages: number;
+  /** USD cost in the bucket (per-model analytics only; omitted on credit charts). */
+  cost?: number;
 }
 
 /** Aggregated usage for one user, computed from their persisted assistant messages. */
@@ -630,4 +639,33 @@ export interface AdminOverview {
   chart: UsagePoint[];
   alerts: AdminUser[];
   activity: AdminActivityEvent[];
+}
+
+/** Per-model usage roll-up over a date range, with USD recomputed from current prices. */
+export interface ModelUsageRow {
+  /** Model slug, or null for built-in pool / un-attributed turns. */
+  model: string | null;
+  /** Display label (LlmModel.label, or "Built-in / pool" for null). */
+  label: string;
+  messageCount: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  /** Current admin price per 1M tokens (null = unpriced). */
+  inputUsdPerMTok: number | null;
+  outputUsdPerMTok: number | null;
+  /** Recomputed cost = in/1e6*inPrice + out/1e6*outPrice; null when unpriced. */
+  costUsd: number | null;
+}
+
+/** Admin analytics: per-model token usage + USD cost over the selected window. */
+export interface AdminAnalytics {
+  rangeDays: number;
+  /** Sum of costUsd across priced rows. */
+  totalCostUsd: number;
+  totalTokens: number;
+  /** Per-model rows, highest cost (then tokens) first. */
+  rows: ModelUsageRow[];
+  /** Daily USD trend (most recent last); each point's `cost` carries the day's USD. */
+  costChart: UsagePoint[];
 }

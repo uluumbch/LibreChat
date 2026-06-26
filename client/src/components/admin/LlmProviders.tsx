@@ -15,6 +15,21 @@ import {
 import { ACCENT, MONO } from './theme';
 import { Card } from './primitives';
 
+/** Parse a price input into USD/1M tokens: blank → null (unpriced), invalid → undefined (skip). */
+function parsePrice(raw: string): number | null | undefined {
+  const t = raw.trim();
+  if (t === '') {
+    return null;
+  }
+  const n = Number(t);
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
+}
+
+/** Format a stored price for an input box: null → '' so the field reads empty. */
+function priceText(v: number | null): string {
+  return v == null ? '' : String(v);
+}
+
 function Toggle({ on, onClick, disabled }: { on: boolean; onClick: () => void; disabled?: boolean }): JSX.Element {
   return (
     <button
@@ -249,12 +264,23 @@ function ModelForm({
   const [slug, setSlug] = useState('');
   const [modelId, setModelId] = useState('');
   const [label, setLabel] = useState('');
+  const [inputPrice, setInputPrice] = useState('');
+  const [outputPrice, setOutputPrice] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const submit = async () => {
     setError(null);
     try {
-      await create.mutateAsync({ providerId, body: { slug: slug.trim(), modelId: modelId.trim(), label: label.trim() } });
+      await create.mutateAsync({
+        providerId,
+        body: {
+          slug: slug.trim(),
+          modelId: modelId.trim(),
+          label: label.trim(),
+          inputUsdPerMTok: parsePrice(inputPrice),
+          outputUsdPerMTok: parsePrice(outputPrice),
+        },
+      });
       onFlash(`Added ${label || slug}`);
       onClose();
     } catch (err) {
@@ -279,6 +305,16 @@ function ModelForm({
           <label style={labelStyle}>Label</label>
           <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Gemini 2.0 Flash" style={inputStyle} />
         </div>
+        <div style={{ display: 'flex', gap: 12 }}>
+          <div style={{ flex: 1 }}>
+            <label style={labelStyle}>USD / 1M input <span style={{ color: '#a1a1aa' }}>(optional)</span></label>
+            <input value={inputPrice} onChange={(e) => setInputPrice(e.target.value)} placeholder="3.00" inputMode="decimal" style={{ ...inputStyle, fontFamily: MONO }} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={labelStyle}>USD / 1M output</label>
+            <input value={outputPrice} onChange={(e) => setOutputPrice(e.target.value)} placeholder="15.00" inputMode="decimal" style={{ ...inputStyle, fontFamily: MONO }} />
+          </div>
+        </div>
         {error && <div style={{ fontSize: 12.5, color: '#dc2626' }}>{error}</div>}
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 9, marginTop: 18 }}>
@@ -302,6 +338,38 @@ function ModelRow({
 }): JSX.Element {
   const toggle = useUpdateLlmModel();
   const del = useDeleteLlmModel();
+  const update = useUpdateLlmModel();
+
+  const commitPrice = (field: 'inputUsdPerMTok' | 'outputUsdPerMTok', raw: string) => {
+    const next = parsePrice(raw);
+    if (next === undefined || next === model[field]) {
+      return; // invalid input or unchanged — leave stored value as-is
+    }
+    const body =
+      field === 'inputUsdPerMTok' ? { inputUsdPerMTok: next } : { outputUsdPerMTok: next };
+    void update.mutateAsync({ slug: model.slug, body });
+  };
+
+  const priceInput = (field: 'inputUsdPerMTok' | 'outputUsdPerMTok') => (
+    <input
+      defaultValue={priceText(model[field])}
+      onBlur={(e) => commitPrice(field, e.target.value)}
+      placeholder="—"
+      inputMode="decimal"
+      title={field === 'inputUsdPerMTok' ? 'USD per 1M input tokens' : 'USD per 1M output tokens'}
+      style={{
+        width: 64,
+        fontFamily: MONO,
+        fontSize: 11,
+        textAlign: 'right',
+        padding: '3px 6px',
+        border: '1px solid #e4e4e7',
+        borderRadius: 6,
+        background: '#fff',
+      }}
+    />
+  );
+
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0' }}>
       <div style={{ minWidth: 0, flex: 1 }}>
@@ -310,6 +378,12 @@ function ModelRow({
           <span style={{ fontFamily: MONO, fontSize: 11, color: '#a1a1aa' }}>{model.slug}</span>
         </div>
         <div style={{ fontFamily: MONO, fontSize: 10.5, color: '#a1a1aa', marginTop: 1 }}>→ {model.modelId}</div>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }} title="USD per 1M tokens (in / out)">
+        <span style={{ fontSize: 10.5, color: '#a1a1aa' }}>$/1M</span>
+        {priceInput('inputUsdPerMTok')}
+        <span style={{ fontSize: 10.5, color: '#a1a1aa' }}>/</span>
+        {priceInput('outputUsdPerMTok')}
       </div>
       {toggle.isPending && toggle.variables?.slug === model.slug ? (
         <Spinner size={15} />

@@ -13,6 +13,7 @@ import {
 } from '~/data/queries';
 import { ApiError } from '~/api/client';
 import { Overview } from '~/components/admin/Overview';
+import { Analytics } from '~/components/admin/Analytics';
 import { UsersTable } from '~/components/admin/UsersTable';
 import type { UserFilter } from '~/components/admin/UsersTable';
 import { Billing } from '~/components/admin/Billing';
@@ -36,12 +37,13 @@ import {
   SearchIcon,
   ShieldIcon,
   SparkIcon,
+  TrendIcon,
   UsersIcon,
 } from '~/components/admin/icons';
 
-type View = 'overview' | 'users' | 'billing' | 'jobs' | 'mcp' | 'llm' | 'composio' | 'commands';
+type View = 'overview' | 'analytics' | 'users' | 'billing' | 'jobs' | 'mcp' | 'llm' | 'composio' | 'commands';
 
-const VIEWS: readonly View[] = ['overview', 'users', 'billing', 'jobs', 'mcp', 'llm', 'composio', 'commands'];
+const VIEWS: readonly View[] = ['overview', 'analytics', 'users', 'billing', 'jobs', 'mcp', 'llm', 'composio', 'commands'];
 
 function isView(value: string | undefined): value is View {
   return value != null && (VIEWS as readonly string[]).includes(value);
@@ -54,6 +56,7 @@ function viewPath(view: View): string {
 
 const TITLES: Record<View, [string, string]> = {
   overview: ['Overview', 'Workspace usage and agent activity at a glance'],
+  analytics: ['Analytics', 'Token usage and USD cost per model'],
   users: ['Users', 'Manage agent profiles and credits'],
   billing: ['Credits', 'Per-user credit balances and top-ups'],
   jobs: ['Scheduled jobs', 'All cron jobs running across user agents'],
@@ -65,6 +68,7 @@ const TITLES: Record<View, [string, string]> = {
 
 const NAV: Array<{ key: View; label: string; icon: ReactNode }> = [
   { key: 'overview', label: 'Overview', icon: <OverviewIcon /> },
+  { key: 'analytics', label: 'Analytics', icon: <TrendIcon /> },
   { key: 'users', label: 'Users', icon: <UsersIcon /> },
   { key: 'billing', label: 'Credits', icon: <CreditsIcon /> },
   { key: 'jobs', label: 'Scheduled jobs', icon: <ClockIcon /> },
@@ -379,6 +383,7 @@ export default function AdminPage(): JSX.Element {
                 onOpenUser={setSelId}
               />
             )}
+            {view === 'analytics' && <Analytics />}
             {view === 'users' && (
               <UsersTable
                 users={users}

@@ -73,13 +73,6 @@ export function UsageBar({ conversationId }: { conversationId: string }): JSX.El
   if (data.creditsUsed) {
     push(<span className="text-brand-dark">{data.creditsUsed.toLocaleString()} cr</span>);
   }
-  if (data.costUsd != null) {
-    push(
-      <span className="text-ink-muted">
-        ${data.costUsd < 0.01 ? data.costUsd.toFixed(4) : data.costUsd.toFixed(2)}
-      </span>,
-    );
-  }
 
   return (
     <div

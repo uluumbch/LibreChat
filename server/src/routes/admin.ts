@@ -1,8 +1,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import type { User as DbUser } from '@prisma/client';
+import type { Prisma, User as DbUser } from '@prisma/client';
 import type {
   AdminActivityEvent,
+  AdminAnalytics,
   AdminJob,
   AdminOverview,
   AdminSlashCommand,
@@ -12,6 +13,7 @@ import type {
   AdminUserToolset,
   AdminUserModel,
   AdminComposioToolkit,
+  AdminLlmModel,
   AdminLlmProvider,
   ComposioToolkit,
   LlmProviderKind,
@@ -28,7 +30,7 @@ import { gatewayPool } from '../hermes/pool';
 import { requireParam } from '../http';
 import { toApiUser, toCreditBalance } from '../users/profile';
 import { provisionDefaults } from '../users/provision';
-import { aggregateUsage, dailyUsageSeries } from '../billing/usage';
+import { aggregateUsage, aggregateUsageByModel, dailyUsageSeries } from '../billing/usage';
 import { JOB_NAME_RE, toJobSummary, userJobPrefix, userJobTag } from '../jobs/scope';
 import { getEnabledSlugs, getEnabledToolkits } from '../composio/catalog';
 import { getEnabledCommands } from '../commands/catalog';
@@ -206,6 +208,19 @@ adminRouter.get(
       activity,
     };
     res.json(overview);
+  }),
+);
+
+// Per-model token usage + USD cost over a window. USD is recomputed from current model prices.
+const ANALYTICS_RANGES = [7, 14, 30, 90] as const;
+
+adminRouter.get(
+  '/analytics',
+  asyncHandler(async (req, res) => {
+    const requested = Number(req.query.days);
+    const days = (ANALYTICS_RANGES as readonly number[]).includes(requested) ? requested : 30;
+    const analytics: AdminAnalytics = await aggregateUsageByModel(days);
+    res.json(analytics);
   }),
 );
 
@@ -676,18 +691,45 @@ const updateProviderBody = z.object({
   enabled: z.boolean().optional(),
 });
 
+// USD per 1,000,000 tokens. Nullable: null clears the price, omit leaves it unchanged on update.
+const priceField = z.number().nonnegative().max(100000).nullable().optional();
+
 const upsertModelBody = z.object({
   slug: z.string().min(1).max(120),
   modelId: z.string().min(1).max(200),
   label: z.string().min(1).max(120),
   enabled: z.boolean().optional(),
+  inputUsdPerMTok: priceField,
+  outputUsdPerMTok: priceField,
 });
 
 const updateModelBody = z.object({
   modelId: z.string().min(1).max(200).optional(),
   label: z.string().min(1).max(120).optional(),
   enabled: z.boolean().optional(),
+  inputUsdPerMTok: priceField,
+  outputUsdPerMTok: priceField,
 });
+
+type AdminModelRow = {
+  slug: string;
+  modelId: string;
+  label: string;
+  enabled: boolean;
+  inputUsdPerMTok: Prisma.Decimal | null;
+  outputUsdPerMTok: Prisma.Decimal | null;
+};
+
+function toAdminModel(m: AdminModelRow): AdminLlmModel {
+  return {
+    slug: m.slug,
+    modelId: m.modelId,
+    label: m.label,
+    enabled: m.enabled,
+    inputUsdPerMTok: m.inputUsdPerMTok == null ? null : Number(m.inputUsdPerMTok),
+    outputUsdPerMTok: m.outputUsdPerMTok == null ? null : Number(m.outputUsdPerMTok),
+  };
+}
 
 type ProviderWithModels = {
   id: string;
@@ -696,7 +738,7 @@ type ProviderWithModels = {
   baseUrl: string | null;
   apiKeyEnc: string;
   enabled: boolean;
-  models: { slug: string; modelId: string; label: string; enabled: boolean }[];
+  models: AdminModelRow[];
 };
 
 function toAdminProvider(p: ProviderWithModels): AdminLlmProvider {
@@ -707,12 +749,7 @@ function toAdminProvider(p: ProviderWithModels): AdminLlmProvider {
     baseUrl: p.baseUrl,
     enabled: p.enabled,
     hasKey: Boolean(p.apiKeyEnc),
-    models: p.models.map((m) => ({
-      slug: m.slug,
-      modelId: m.modelId,
-      label: m.label,
-      enabled: m.enabled,
-    })),
+    models: p.models.map(toAdminModel),
   };
 }
 
@@ -836,9 +873,11 @@ adminRouter.post(
         modelId: input.modelId,
         label: input.label,
         enabled: input.enabled ?? true,
+        inputUsdPerMTok: input.inputUsdPerMTok ?? null,
+        outputUsdPerMTok: input.outputUsdPerMTok ?? null,
       },
     });
-    res.status(201).json({ slug: model.slug, modelId: model.modelId, label: model.label, enabled: model.enabled });
+    res.status(201).json(toAdminModel(model));
   }),
 );
 
@@ -857,9 +896,11 @@ adminRouter.patch(
         ...(input.modelId !== undefined ? { modelId: input.modelId } : {}),
         ...(input.label !== undefined ? { label: input.label } : {}),
         ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
+        ...(input.inputUsdPerMTok !== undefined ? { inputUsdPerMTok: input.inputUsdPerMTok } : {}),
+        ...(input.outputUsdPerMTok !== undefined ? { outputUsdPerMTok: input.outputUsdPerMTok } : {}),
       },
     });
-    res.json({ slug: model.slug, modelId: model.modelId, label: model.label, enabled: model.enabled });
+    res.json(toAdminModel(model));
   }),
 );
 

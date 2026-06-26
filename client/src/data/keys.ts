@@ -10,6 +10,7 @@ export const queryKeys = {
   jobs: ['jobs'] as const,
   search: (q: string) => ['search', q] as const,
   adminOverview: ['admin', 'overview'] as const,
+  adminAnalytics: (days: number) => ['admin', 'analytics', days] as const,
   adminUsers: (q: string) => ['admin', 'users', q] as const,
   adminUser: (id: string) => ['admin', 'user', id] as const,
   adminJobs: ['admin', 'jobs'] as const,

@@ -155,6 +155,7 @@ export async function runChatTurnViaRuns(params: RunsChatTurnParams): Promise<vo
     finishReason,
     errored,
     usage: accumulator.usage,
+    model: ctx.conversation.model ?? ctx.user.model,
   });
 
   if (!errored) {

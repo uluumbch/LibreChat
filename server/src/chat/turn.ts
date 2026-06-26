@@ -165,9 +165,20 @@ export async function persistAssistantMessage(params: {
   finishReason: string;
   errored: boolean;
   usage?: NormalizedUsage;
+  model?: string | null;
 }) {
-  const { ctx, assistantId, userMessageId, sessionId, text, content, finishReason, errored, usage } =
-    params;
+  const {
+    ctx,
+    assistantId,
+    userMessageId,
+    sessionId,
+    text,
+    content,
+    finishReason,
+    errored,
+    usage,
+    model,
+  } = params;
 
   const meter =
     !errored && usage && tokensUsed(usage) > 0
@@ -191,6 +202,7 @@ export async function persistAssistantMessage(params: {
         parentMessageId: userMessageId,
         finishReason,
         error: errored,
+        model: model ?? null,
         ...(meter ?? {}),
       },
     }),

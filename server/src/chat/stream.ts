@@ -131,6 +131,7 @@ export async function runChatTurn(params: RunChatTurnParams): Promise<void> {
     finishReason,
     errored,
     usage: accumulator.usage,
+    model: ctx.conversation.model ?? ctx.user.model,
   });
 
   if (!errored) {

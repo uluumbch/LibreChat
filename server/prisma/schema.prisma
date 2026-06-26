@@ -110,10 +110,14 @@ model Message {
   outputTokens   Int? @map("output_tokens")
   totalTokens    Int? @map("total_tokens")
   creditsCharged Int? @map("credits_charged")
+  // Model slug effective for this turn (LlmModel.slug; null = built-in pool / pre-feature rows).
+  // Used to attribute usage per model for analytics — left-joined to LlmModel at report time.
+  model          String?
 
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([conversationId, createdAt])
+  @@index([role, createdAt])
   @@map("messages")
 }
 
@@ -153,6 +157,9 @@ model LlmModel {
   modelId    String      @map("model_id")
   label      String
   enabled    Boolean     @default(true)
+  // Admin-set USD price per 1,000,000 tokens (input / output). Null = unpriced (no USD shown).
+  inputUsdPerMTok  Decimal? @map("input_usd_per_mtok")  @db.Decimal(12, 6)
+  outputUsdPerMTok Decimal? @map("output_usd_per_mtok") @db.Decimal(12, 6)
   createdAt  DateTime    @default(now()) @map("created_at")
 
   @@index([providerId])

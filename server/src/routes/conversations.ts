@@ -166,7 +166,8 @@ conversationsRouter.get(
       creditsUsed: totals.creditsUsed,
     };
 
-    // Best-effort overlay from the live session for fields we don't persist (tools, reasoning, cost).
+    // Best-effort overlay from the live session for fields we don't persist (tools, reasoning).
+    // USD cost is deliberately NOT surfaced to users — it's admin-only (see /admin/analytics).
     if (conversation.hermesSessionId && conversation.hermesGatewayId) {
       const pooled = gatewayPool.byGatewayId(conversation.hermesGatewayId);
       const session = pooled
@@ -176,7 +177,6 @@ conversationsRouter.get(
         usage.toolCallCount = session.tool_call_count;
         usage.apiCallCount = session.api_call_count;
         usage.reasoningTokens = session.reasoning_tokens;
-        usage.costUsd = session.actual_cost_usd ?? session.estimated_cost_usd;
       }
     }
 

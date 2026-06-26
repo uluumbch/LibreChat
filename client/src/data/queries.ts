@@ -5,6 +5,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import type {
+  AdminAnalytics,
   AdminJob,
   AdminJobsResponse,
   AdminOverview,
@@ -217,6 +218,14 @@ export function useAdminOverview() {
   return useQuery({
     queryKey: queryKeys.adminOverview,
     queryFn: () => apiRequest<AdminOverview>('GET', '/api/admin/overview'),
+    staleTime: 30 * 1000,
+  });
+}
+
+export function useAdminAnalytics(days: number) {
+  return useQuery({
+    queryKey: queryKeys.adminAnalytics(days),
+    queryFn: () => apiRequest<AdminAnalytics>('GET', `/api/admin/analytics?days=${days}`),
     staleTime: 30 * 1000,
   });
 }
