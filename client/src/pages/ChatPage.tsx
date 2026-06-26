@@ -74,6 +74,7 @@ export default function ChatPage(): JSX.Element {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [jobsOpen, setJobsOpen] = useState(false);
   const initialSentRef = useRef<string | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const initial = location.state as InitialState | null;
 
@@ -150,7 +151,7 @@ export default function ChatPage(): JSX.Element {
           </div>
         </header>
 
-        <div className="hm-scroll flex-1 overflow-y-auto">
+        <div ref={scrollRef} className="hm-scroll flex-1 overflow-y-auto">
           {convId === null ? (
             <EmptyState onPick={(text) => void onSend(text, false, [])} />
           ) : chat.isLoadingHistory ? (
@@ -158,7 +159,7 @@ export default function ChatPage(): JSX.Element {
               <Spinner size={24} />
             </div>
           ) : (
-            <MessageList messages={chat.messages} isStreaming={chat.isStreaming} />
+            <MessageList messages={chat.messages} isStreaming={chat.isStreaming} scrollRef={scrollRef} />
           )}
         </div>
 

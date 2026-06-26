@@ -72,14 +72,21 @@ export function useChat(conversationId: string | null): UseChatResult {
   const sseRef = useRef<SSE | null>(null);
   const assistantIdRef = useRef<string | null>(null);
   const finishedRef = useRef(false);
+  const seededConvRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (historyQuery.data) {
-      setMessages(historyQuery.data.items);
-    } else {
-      setMessages([]);
+    // Conversation actually switched → adopt its history (or empty) outright.
+    if (seededConvRef.current !== conversationId) {
+      seededConvRef.current = conversationId;
+      setMessages(historyQuery.data?.items ?? []);
+      return;
     }
-  }, [historyQuery.data, conversationId]);
+    // Same conversation, history (re)loaded: only adopt it if we have no local
+    // turn in flight, so an empty/late GET can't wipe the optimistic message.
+    if (historyQuery.data) {
+      setMessages((prev) => (prev.length > 0 ? prev : historyQuery.data!.items));
+    }
+  }, [conversationId, historyQuery.data]);
 
   // Tear down any active stream when the conversation changes or on unmount.
   useEffect(() => {
